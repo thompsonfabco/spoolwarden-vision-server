@@ -226,3 +226,18 @@ def test_installer_dependency_checks_present():
         "Prompt-ManualDependency",
     ):
         assert required in ps_text
+
+
+def test_wsl_harness_script_present():
+    root = Path(__file__).resolve().parent.parent
+    wsl_script = root / "tests" / "wsl_test_installer.sh"
+    wsl_bat = root / "tools" / "run_wsl_installer_test.bat"
+
+    assert wsl_script.is_file()
+    assert wsl_bat.is_file()
+
+    raw = wsl_script.read_bytes()
+    assert b"\r" not in raw, "tests/wsl_test_installer.sh must use LF line endings"
+    text = raw.decode("utf-8")
+    for token in ("--no-systemd", "--non-interactive", "/v1/health", "/v1/read", "/v1/revise", "--uninstall"):
+        assert token in text

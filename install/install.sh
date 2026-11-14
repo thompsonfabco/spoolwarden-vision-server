@@ -190,7 +190,7 @@ has_shared_lib() {
 }
 
 find_python() {
-  local cand py_path
+  local cand py_path ver
   for cand in python3.12 python3.11 python3.13 python3.14 python3.10 python3; do
     if command -v "${cand}" >/dev/null 2>&1; then
       if "${cand}" -c 'import sys, venv, ensurepip; raise SystemExit(0 if (3, 10) <= sys.version_info[:2] <= (3, 14) else 1)' >/dev/null 2>&1; then
@@ -199,6 +199,17 @@ find_python() {
       fi
     fi
   done
+  shopt -s nullglob
+  for py_path in "${HOME}/.local/share/uv/python"/cpython-3.1*/bin/python3; do
+    if [[ -x "${py_path}" ]]; then
+      if "${py_path}" -c 'import sys, venv, ensurepip; raise SystemExit(0 if (3, 10) <= sys.version_info[:2] <= (3, 14) else 1)' >/dev/null 2>&1; then
+        shopt -u nullglob
+        echo "${py_path}"
+        return 0
+      fi
+    fi
+  done
+  shopt -u nullglob
   if find_uv >/dev/null 2>&1; then
     local uv_bin
     uv_bin="$(find_uv)"
@@ -249,8 +260,10 @@ install_pkg_manager_deps() {
     apt-get)
       run_privileged apt-get update -y || return 1
       run_privileged env DEBIAN_FRONTEND=noninteractive apt-get install -y \
-        python3 python3-venv python3-pip curl ca-certificates tar unzip libglib2.0-0 libgomp1 || return 1
-      run_privileged env DEBIAN_FRONTEND=noninteractive apt-get install -y libgl1 libheif1 || true
+        python3 python3-venv python3-pip curl ca-certificates tar unzip libgomp1 || return 1
+      run_privileged env DEBIAN_FRONTEND=noninteractive apt-get install -y libgl1 libheif1 libglib2.0-0t64 \
+        || run_privileged env DEBIAN_FRONTEND=noninteractive apt-get install -y libgl1 libheif1 libglib2.0-0 \
+        || true
       ;;
     dnf)
       run_privileged dnf install -y python3 python3-pip curl ca-certificates tar unzip mesa-libGL glib2 libgomp || return 1
