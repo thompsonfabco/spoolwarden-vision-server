@@ -28,10 +28,16 @@ Installer options (`install\install.ps1`):
 - `-Port 7920` (default: `7920`)
 - `-Bind 127.0.0.1` (use `0.0.0.0` to expose on your LAN)
 - `-Prefix <dir>` (install to a target directory instead of in-place)
-- `-WithGpu` (install optional PyTorch/Transformers/PEFT GPU extras)
+- `-WithGpu` (install optional PyTorch/Transformers/PEFT GPU extras with CUDA wheels)
 - `-RegisterStartup` (create Scheduled Task `FilamentVisionServer` at logon)
 - `-Start` / `-OpenBrowser`
+- `-NonInteractive` (disable interactive dependency prompts for unattended runs)
 - `-Uninstall` (stop server, remove Scheduled Task, clean venv)
+
+Automatic Windows Dependency Handling (`install\install.ps1`):
+- Checks for **Microsoft Visual C++ 2015–2022 Redistributable (x64)** and automatically installs via `winget` or downloads `vc_redist.x64.exe` if missing.
+- Checks for **Python 3.10–3.14** (with `venv` & `ensurepip`), and automatically installs Python 3.12 via `winget`, `uv`, or the official Python.org installer if missing.
+- Checks NVIDIA driver (`nvidia-smi`) when `-Tier gpu` or `-WithGpu` is set, installs CUDA PyTorch wheels (`cu124`) if CUDA is present, verifies model weights and Python imports, and prompts interactively (offering browser download + re-check) if any dependency requires manual installation.
 
 ---
 
@@ -52,8 +58,15 @@ Installer options (`install/install.sh`):
 - `--user <username>`
 - `--prefix /opt/filament-vision-server`
 - `--assets <models_dir>` (defaults to `./models`)
+- `--with-gpu` (install optional PyTorch/Transformers/PEFT GPU extras)
 - `--no-systemd` (skip systemd unit creation; creates `start_server.sh` / `stop_server.sh` under `--prefix`)
+- `-y`, `--non-interactive` (skip interactive prompts for CI/unattended installs)
 - `--uninstall` (stop service, remove unit, remove prefix install)
+
+Automatic Linux Dependency Handling (`install/install.sh`):
+- Detects missing system packages/shared libs (`python3-venv`, `python3-pip`, `curl`, `ca-certificates`, `libglib-2.0`, `libgomp1`, `libGL`, `libheif`) and installs them automatically via `apt-get`, `dnf`, `yum`, `pacman`, `zypper`, or `apk` (with `sudo` prompt if non-root).
+- If no distro Python 3.10–3.14 runtime is available, automatically bootstraps standalone `uv` + Python 3.12 without needing root.
+- Verifies GPU driver readiness (`nvidia-smi` when `--tier gpu`/`--with-gpu`), model weights (with optional `FILAMENT_VISION_SERVER_ASSETS_URL` download), and Python imports with `--force-reinstall` auto-repair, prompting the user with install instructions + retry if any manual step is needed.
 
 ---
 

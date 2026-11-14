@@ -9,6 +9,8 @@ import urllib.error
 import urllib.request
 import zipfile
 
+from pathlib import Path
+
 import pytest
 from PIL import Image, ImageDraw
 
@@ -190,3 +192,37 @@ def test_config_persistence_and_feedback_lifecycle(standalone_server):
     del_res = json.loads(raw_del.decode("utf-8"))
     assert del_res["ok"] is True
     assert del_res["queued_count"] == 0
+
+
+def test_installer_dependency_checks_present():
+    root = Path(__file__).resolve().parent.parent
+    sh_path = root / "install" / "install.sh"
+    ps_path = root / "install" / "install.ps1"
+
+    assert sh_path.is_file()
+    assert ps_path.is_file()
+
+    sh_bytes = sh_path.read_bytes()
+    assert b"\r" not in sh_bytes, "install.sh must use LF line endings"
+    sh_text = sh_bytes.decode("utf-8")
+    for required in (
+        "ensure_linux_system_deps",
+        "bootstrap_python_with_uv",
+        "ensure_python_runtime",
+        "ensure_gpu_deps",
+        "ensure_model_assets",
+        "verify_python_deps",
+        "prompt_manual_dependency",
+    ):
+        assert required in sh_text
+
+    ps_text = ps_path.read_text(encoding="utf-8")
+    for required in (
+        "Ensure-VcRedist",
+        "Ensure-PythonRuntime",
+        "Ensure-GpuDependencies",
+        "Ensure-ModelAssets",
+        "Test-AndRepairPythonDependencies",
+        "Prompt-ManualDependency",
+    ):
+        assert required in ps_text
