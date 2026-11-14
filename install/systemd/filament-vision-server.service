@@ -1,0 +1,25 @@
+[Unit]
+Description=Filament Vision Server (Standalone Spool Recognition Service)
+After=network.target
+
+[Service]
+Type=simple
+User=__SERVICE_USER__
+WorkingDirectory=__PREFIX__
+Environment="FILAMENT_VISION_SERVER_HOME=__PREFIX__"
+Environment="FILAMENT_VISION_SERVER_HOST=__BIND__"
+Environment="FILAMENT_VISION_SERVER_PORT=__PORT__"
+Environment="FILAMENT_VISION_SERVER_TIER=__TIER__"
+Environment="XDG_CACHE_HOME=__PREFIX__/data/cache"
+Environment="HOME=__PREFIX__/data"
+EnvironmentFile=-/etc/filament-vision-server/env
+ExecStart=__PREFIX__/.venv/bin/filament-vision-server serve --host __BIND__ --port __PORT__ --tier __TIER__
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=__PREFIX__/configs __PREFIX__/data
+
+[Install]
+WantedBy=multi-user.target

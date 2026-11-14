@@ -1,0 +1,62 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "filament-vision-server"
+version = "1.0.0"
+description = "Standalone cross-platform 3D printer filament spool recognition server with built-in Web UI and HTTP API v1"
+readme = "README.md"
+license = {text = "GPL-3.0-or-later"}
+requires-python = ">=3.10,<3.15"
+dependencies = [
+    "defusedxml>=0.7.1",
+    "Pillow>=10.0.0",
+    "pillow-heif>=0.16.0",
+    "numpy>=1.26.0",
+    "opencv-python-headless>=4.9.0",
+    "onnxruntime>=1.18.0",
+    "rapidfuzz>=3.6.0",
+    "rapidocr>=3.0.0",
+    "scikit-learn>=1.4.0",
+]
+
+[project.optional-dependencies]
+gpu = [
+    "torch>=2.3.0",
+    "transformers>=4.45.0",
+    "peft>=0.12.0",
+    "accelerate>=0.33.0",
+    "bitsandbytes>=0.43.0",
+    "qwen-vl-utils>=0.0.8",
+]
+train = [
+    "torch>=2.3.0",
+    "torchvision>=0.18.0",
+    "timm>=1.0.3",
+    "rfdetr[train]>=1.12.0",
+    "transformers>=4.45.0",
+    "peft>=0.12.0",
+    "accelerate>=0.33.0",
+    "bitsandbytes>=0.43.0",
+    "qwen-vl-utils>=0.0.8",
+    "onnx>=1.16.0",
+    "onnxscript>=0.1.0",
+]
+test = [
+    "pytest>=8.0.0",
+]
+
+[project.scripts]
+filament-vision-server = "filament_vision_server.service.cli:main"
+spool-server = "filament_vision_server.service.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+filament_vision_server = ["data/*.xml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

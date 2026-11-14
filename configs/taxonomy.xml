@@ -1,0 +1,364 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Spoolman and filament-kit taxonomy, normalization rules, tare weights, densities,
+  color families, and vendor aliases for filament-kit-vision.
+-->
+<filament-taxonomy version="1">
+  <materials default="PLA">
+    <material code="PLA" density="1.24" default-nozzle="190-230" default-bed="35-55">
+      <alias>PLA+</alias>
+      <alias>PLA Plus</alias>
+      <alias>PLA+ 2.0</alias>
+      <alias>PLA Pro</alias>
+      <alias>PLA Basic</alias>
+      <alias>PLA Matte</alias>
+      <alias>PLA Silk</alias>
+      <alias>Silk PLA</alias>
+      <alias>Matte PLA</alias>
+      <alias>Rapid PLA</alias>
+      <alias>Rapid PLA+</alias>
+      <alias>High Speed PLA</alias>
+      <alias>High Speed PLA+</alias>
+      <alias>HS PLA</alias>
+      <alias>Hyper PLA</alias>
+      <alias>Meta PLA</alias>
+      <alias>PLA Meta</alias>
+      <alias>PLA Lite</alias>
+      <alias>PLA Glow</alias>
+      <alias>PLA Wood</alias>
+      <alias>PLA Marble</alias>
+      <alias>PLA Galaxy</alias>
+      <alias>PLA Sparkle</alias>
+      <alias>PLA Aero</alias>
+      <alias>PLA Tough</alias>
+      <alias>PLA Dynamic</alias>
+      <alias>PLA Metal</alias>
+      <alias>PLA Translucent</alias>
+      <alias>Polylactic Acid</alias>
+    </material>
+    <material code="PETG" density="1.27" default-nozzle="230-260" default-bed="65-80">
+      <alias>PETG Basic</alias>
+      <alias>PETG HF</alias>
+      <alias>PETG High Flow</alias>
+      <alias>Rapid PETG</alias>
+      <alias>High Speed PETG</alias>
+      <alias>PETG Pro</alias>
+      <alias>PETG Matte</alias>
+      <alias>PETG Translucent</alias>
+      <alias>PETG+</alias>
+      <alias>Elite PETG</alias>
+    </material>
+    <material code="ABS" density="1.04" default-nozzle="240-270" default-bed="90-100">
+      <alias>ABS+</alias>
+      <alias>ABS Pro</alias>
+      <alias>Hyper ABS</alias>
+      <alias>Easy ABS</alias>
+    </material>
+    <material code="ASA" density="1.07" default-nozzle="240-270" default-bed="90-100">
+      <alias>ASA Aero</alias>
+      <alias>ASA+</alias>
+    </material>
+    <material code="TPU" density="1.21" default-nozzle="210-240" default-bed="30-50">
+      <alias>TPU 95A</alias>
+      <alias>TPU 85A</alias>
+      <alias>TPU 90A</alias>
+      <alias>TPU 98A</alias>
+      <alias>TPU for AMS</alias>
+      <alias>High Speed TPU</alias>
+      <alias>Flexible</alias>
+      <alias>TPE</alias>
+    </material>
+    <material code="PC" density="1.20" default-nozzle="260-280" default-bed="90-110">
+      <alias>Polycarbonate</alias>
+      <alias>PC-FR</alias>
+      <alias>PC Plus</alias>
+    </material>
+    <material code="PLA-CF" density="1.22" default-nozzle="210-240" default-bed="45-60">
+      <alias>Carbon Fiber PLA</alias>
+      <alias>PLA Carbon Fiber</alias>
+    </material>
+    <material code="PETG-CF" density="1.25" default-nozzle="240-270" default-bed="65-80">
+      <alias>Carbon Fiber PETG</alias>
+      <alias>PETG Carbon Fiber</alias>
+    </material>
+    <material code="ASA-CF" density="1.10" default-nozzle="250-280" default-bed="90-105"/>
+    <material code="ABS-GF" density="1.08" default-nozzle="240-270" default-bed="90-100"/>
+    <material code="PA-CF" density="1.23" default-nozzle="260-290" default-bed="80-100">
+      <alias>Nylon CF</alias>
+      <alias>PA Carbon Fiber</alias>
+    </material>
+    <material code="PA6-CF" density="1.09" default-nozzle="260-290" default-bed="80-100"/>
+    <material code="PA6-GF" density="1.19" default-nozzle="260-290" default-bed="80-100"/>
+    <material code="PAHT-CF" density="1.23" default-nozzle="260-290" default-bed="80-100"/>
+    <material code="PA12-CF" density="1.06" default-nozzle="260-290" default-bed="80-100"/>
+    <material code="PET-CF" density="1.29" default-nozzle="260-290" default-bed="80-100"/>
+    <material code="PPA-CF" density="1.21" default-nozzle="280-310" default-bed="100-120"/>
+    <material code="PPS-CF" density="1.26" default-nozzle="310-340" default-bed="100-120"/>
+    <material code="PA" density="1.14" default-nozzle="250-280" default-bed="70-90">
+      <alias>Nylon</alias>
+      <alias>PA6</alias>
+      <alias>PA12</alias>
+    </material>
+    <material code="PVA" density="1.23" default-nozzle="190-215" default-bed="45-60"/>
+    <material code="HIPS" density="1.04" default-nozzle="230-250" default-bed="90-100"/>
+    <material code="PEI" density="1.27" default-nozzle="340-380" default-bed="140-160"/>
+    <material code="PP" density="0.90" default-nozzle="210-235" default-bed="80-100"/>
+  </materials>
+
+  <vendor-defaults fallback-tare="200">
+    <vendor name="Bambu Lab" tare="250" priority="1" flange-trait="reusable-hex-cutout-or-notched-hub">
+      <alias>Bambu</alias>
+      <alias>BBL</alias>
+      <alias>BambuLab</alias>
+    </vendor>
+    <vendor name="SUNLU" tare="213" priority="1" flange-trait="perforated-radial-slots-black-plastic">
+      <alias>Sunlu</alias>
+      <alias>SUNLU Official</alias>
+    </vendor>
+    <vendor name="ELEGOO" tare="154" priority="1" flange-trait="cardboard-rim-printed-scale-window">
+      <alias>Elegoo</alias>
+    </vendor>
+    <vendor name="Polymaker" tare="142" priority="2" flange-trait="cardboard-two-window-gauge">
+      <alias>Panchroma</alias>
+      <alias>PolyTerra</alias>
+      <alias>PolyLite</alias>
+      <alias>PolyMax</alias>
+      <alias>PolySonic</alias>
+    </vendor>
+    <vendor name="eSUN" tare="225" priority="2" flange-trait="clear-or-black-plastic-curved-slots">
+      <alias>ESUN</alias>
+      <alias>e-SUN</alias>
+    </vendor>
+    <vendor name="OVERTURE" tare="155" priority="2" flange-trait="cardboard-measure-window">
+      <alias>Overture</alias>
+    </vendor>
+    <vendor name="Hatchbox" tare="225" priority="2" flange-trait="solid-black-flange-circular-hub-sticker">
+      <alias>HATCHBOX</alias>
+    </vendor>
+    <vendor name="Prusament" tare="201" priority="2" flange-trait="hexagonal-honeycomb-flange">
+      <alias>Prusa</alias>
+      <alias>Prusa Research</alias>
+    </vendor>
+    <vendor name="Creality" tare="165" priority="2" flange-trait="hyper-series-cardboard-or-black-plastic">
+      <alias>CREALITY</alias>
+      <alias>Ender</alias>
+    </vendor>
+    <vendor name="Anycubic" tare="170" priority="2" flange-trait="black-plastic-or-cardboard-hub">
+      <alias>ANYCUBIC</alias>
+    </vendor>
+    <vendor name="Eryone" tare="185" priority="2" flange-trait="black-spool-colorful-sticker">
+      <alias>ERYONE</alias>
+    </vendor>
+    <vendor name="Inland" tare="210" priority="2" flange-trait="microcenter-cardboard-or-black-spool">
+      <alias>INLAND</alias>
+    </vendor>
+    <vendor name="JAYO" tare="120" priority="2" flange-trait="compact-black-or-cardboard-spool">
+      <alias>Jayo</alias>
+    </vendor>
+    <vendor name="GEEETECH" tare="180" priority="3" flange-trait="black-plastic-radial-cutouts">
+      <alias>Geeetech</alias>
+    </vendor>
+    <vendor name="DEEPLEE" tare="140" priority="3" flange-trait="cardboard-spool">
+      <alias>Deeplee</alias>
+    </vendor>
+    <vendor name="Push Plastic" tare="218" priority="3" flange-trait="black-plastic-spool"/>
+    <vendor name="Kingroon" tare="160" priority="3" flange-trait="black-plastic-spool">
+      <alias>KINGROON</alias>
+    </vendor>
+    <vendor name="Amolen" tare="190" priority="3" flange-trait="clear-or-black-spool">
+      <alias>AMOLEN</alias>
+    </vendor>
+    <vendor name="Flashforge" tare="200" priority="3" flange-trait="black-plastic-spool">
+      <alias>FLASHFORGE</alias>
+    </vendor>
+    <vendor name="3DXTech" tare="220" priority="3" flange-trait="industrial-black-spool">
+      <alias>3DXTECH</alias>
+    </vendor>
+    <vendor name="Phrozen" tare="195" priority="3" flange-trait="black-plastic-or-cardboard-spool">
+      <alias>PHROZEN</alias>
+      <alias>phrozen3d</alias>
+    </vendor>
+    <vendor name="Comgrow" tare="190" priority="3" flange-trait="black-plastic-spool">
+      <alias>COMGROW</alias>
+    </vendor>
+    <vendor name="NZN" tare="190" priority="3" flange-trait="black-plastic-spool"/>
+  </vendor-defaults>
+
+  <color-families>
+    <family name="Black" default-hex="1A1A1A">
+      <keyword>black</keyword>
+      <keyword>charcoal</keyword>
+      <keyword>onyx</keyword>
+      <keyword>obsidian</keyword>
+      <keyword>ebony</keyword>
+      <keyword>jet</keyword>
+      <keyword>carbon</keyword>
+      <keyword>midnight</keyword>
+    </family>
+    <family name="White" default-hex="F5F5F5">
+      <keyword>white</keyword>
+      <keyword>ivory</keyword>
+      <keyword>snow</keyword>
+      <keyword>pearl</keyword>
+      <keyword>alabaster</keyword>
+      <keyword>milk</keyword>
+      <keyword>bone</keyword>
+      <keyword>cold white</keyword>
+      <keyword>jade white</keyword>
+      <keyword>cool white</keyword>
+      <keyword>warm white</keyword>
+    </family>
+    <family name="Gray/Silver" default-hex="808487">
+      <keyword>gray</keyword>
+      <keyword>grey</keyword>
+      <keyword>silver</keyword>
+      <keyword>ash</keyword>
+      <keyword>slate</keyword>
+      <keyword>gunmetal</keyword>
+      <keyword>titanium</keyword>
+      <keyword>space gray</keyword>
+      <keyword>light gray</keyword>
+      <keyword>dark grey</keyword>
+      <keyword>nardo</keyword>
+      <keyword>cement</keyword>
+      <keyword>marble</keyword>
+      <keyword>pewter</keyword>
+    </family>
+    <family name="Red" default-hex="D12229">
+      <keyword>red</keyword>
+      <keyword>crimson</keyword>
+      <keyword>scarlet</keyword>
+      <keyword>ruby</keyword>
+      <keyword>cherry</keyword>
+      <keyword>burgundy</keyword>
+      <keyword>maroon</keyword>
+      <keyword>wine</keyword>
+      <keyword>fire</keyword>
+      <keyword>fire engine</keyword>
+    </family>
+    <family name="Orange" default-hex="F57C00">
+      <keyword>orange</keyword>
+      <keyword>tangerine</keyword>
+      <keyword>mandarin</keyword>
+      <keyword>pumpkin</keyword>
+      <keyword>coral</keyword>
+      <keyword>amber</keyword>
+      <keyword>apricot</keyword>
+      <keyword>terracotta</keyword>
+      <keyword>sunrise</keyword>
+    </family>
+    <family name="Yellow" default-hex="FBC02D">
+      <keyword>yellow</keyword>
+      <keyword>lemon</keyword>
+      <keyword>sunflower</keyword>
+      <keyword>canary</keyword>
+      <keyword>mustard</keyword>
+      <keyword>cyber yellow</keyword>
+      <keyword>banana</keyword>
+    </family>
+    <family name="Green" default-hex="2E7D32">
+      <keyword>green</keyword>
+      <keyword>olive</keyword>
+      <keyword>lime</keyword>
+      <keyword>emerald</keyword>
+      <keyword>mint</keyword>
+      <keyword>forest</keyword>
+      <keyword>bambu green</keyword>
+      <keyword>mistletoe</keyword>
+      <keyword>jade</keyword>
+      <keyword>pine</keyword>
+      <keyword>sage</keyword>
+      <keyword>army green</keyword>
+      <keyword>avocado</keyword>
+      <keyword>matcha</keyword>
+    </family>
+    <family name="Blue" default-hex="1976D2">
+      <keyword>blue</keyword>
+      <keyword>cyan</keyword>
+      <keyword>navy</keyword>
+      <keyword>cobalt</keyword>
+      <keyword>sky</keyword>
+      <keyword>azure</keyword>
+      <keyword>turquoise</keyword>
+      <keyword>teal</keyword>
+      <keyword>sapphire</keyword>
+      <keyword>marine</keyword>
+      <keyword>ice blue</keyword>
+      <keyword>royal blue</keyword>
+      <keyword>indigo</keyword>
+    </family>
+    <family name="Purple" default-hex="7B1FA2">
+      <keyword>purple</keyword>
+      <keyword>violet</keyword>
+      <keyword>lavender</keyword>
+      <keyword>lilac</keyword>
+      <keyword>plum</keyword>
+      <keyword>amethyst</keyword>
+      <keyword>taro</keyword>
+      <keyword>aubergine</keyword>
+    </family>
+    <family name="Pink" default-hex="EC407A">
+      <keyword>pink</keyword>
+      <keyword>magenta</keyword>
+      <keyword>rose</keyword>
+      <keyword>sakura</keyword>
+      <keyword>fuchsia</keyword>
+      <keyword>flamingo</keyword>
+      <keyword>peach</keyword>
+      <keyword>pastel pink</keyword>
+      <keyword>hot pink</keyword>
+    </family>
+    <family name="Brown/Beige" default-hex="8D6E63">
+      <keyword>brown</keyword>
+      <keyword>beige</keyword>
+      <keyword>tan</keyword>
+      <keyword>chocolate</keyword>
+      <keyword>coffee</keyword>
+      <keyword>espresso</keyword>
+      <keyword>latte</keyword>
+      <keyword>caramel</keyword>
+      <keyword>wood</keyword>
+      <keyword>sand</keyword>
+      <keyword>khaki</keyword>
+      <keyword>skin</keyword>
+      <keyword>desert</keyword>
+      <keyword>cocoa</keyword>
+    </family>
+    <family name="Gold/Bronze" default-hex="D4AF37">
+      <keyword>gold</keyword>
+      <keyword>bronze</keyword>
+      <keyword>copper</keyword>
+      <keyword>brass</keyword>
+      <keyword>champagne</keyword>
+    </family>
+    <family name="Transparent/Natural" default-hex="E0E8EA">
+      <keyword>transparent</keyword>
+      <keyword>clear</keyword>
+      <keyword>natural</keyword>
+      <keyword>translucent</keyword>
+      <keyword>glass</keyword>
+    </family>
+    <family name="Multi-color/Rainbow" default-hex="9C27B0">
+      <keyword>rainbow</keyword>
+      <keyword>gradient</keyword>
+      <keyword>multicolor</keyword>
+      <keyword>multi-color</keyword>
+      <keyword>dual color</keyword>
+      <keyword>tri-color</keyword>
+      <keyword>coextrusion</keyword>
+      <keyword>chameleon</keyword>
+      <keyword>nebula</keyword>
+    </family>
+  </color-families>
+
+  <visual-finishes>
+    <finish name="Basic" description="Standard semi-gloss polymer finish"/>
+    <finish name="Matte" description="Low-sheen diffused matte surface"/>
+    <finish name="Silk" description="High-luster metallic/satin sheen"/>
+    <finish name="Galaxy" description="Glitter/sparkle/marble flecks suspended in filament"/>
+    <finish name="Translucent" description="Semi-transparent or clear filament coils"/>
+    <finish name="CF" description="Rough matte carbon-fiber or glass-fiber texture"/>
+    <finish name="Wood" description="Fibrous matte wood-filled appearance"/>
+    <finish name="Glow" description="Pale phosphorescent glow-in-the-dark finish"/>
+  </visual-finishes>
+</filament-taxonomy>

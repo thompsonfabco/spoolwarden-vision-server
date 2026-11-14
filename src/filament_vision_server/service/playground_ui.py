@@ -1,0 +1,345 @@
+"""Interactive browser Playground UI for testing filament-vision-server CPU and GPU models on any image (.HEIC/.JPG/.PNG)."""
+from __future__ import annotations
+
+import base64
+import io
+import json
+import random
+import traceback
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from typing import Any
+from urllib.parse import parse_qs, urlparse
+
+from PIL import Image, ImageOps
+import pillow_heif
+
+from .daemon import FilamentRecognizer
+from ..xml_io import PROJECT_ROOT
+
+pillow_heif.register_heif_opener()
+
+PLAYGROUND_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>filament-vision-server — Model Playground</title>
+<style>
+  :root {
+    --bg: #0f172a; --panel: #1e293b; --border: #334155;
+    --text: #f8fafc; --muted: #94a3b8; --accent: #38bdf8; --green: #22c55e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px; font-family: system-ui, -apple-system, sans-serif;
+    background: var(--bg); color: var(--text);
+  }
+  h1 { margin: 0 0 6px 0; font-size: 22px; }
+  .sub { color: var(--muted); font-size: 14px; margin-bottom: 20px; }
+  .layout { display: grid; grid-template-columns: 380px 1fr; gap: 20px; align-items: start; }
+  .card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 12px; padding: 18px;
+  }
+  .dropzone {
+    border: 2px dashed var(--accent); border-radius: 10px; padding: 28px 16px;
+    text-align: center; cursor: pointer; background: rgba(56, 189, 248, 0.05);
+    transition: background 0.15s;
+  }
+  .dropzone:hover, .dropzone.dragover { background: rgba(56, 189, 248, 0.14); }
+  .controls { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+  select, button {
+    background: #0f172a; color: var(--text); border: 1px solid var(--border);
+    border-radius: 8px; padding: 9px 14px; font-size: 14px; cursor: pointer;
+  }
+  button.primary {
+    background: var(--accent); color: #0f172a; font-weight: 600; border: none; flex: 1;
+  }
+  button.secondary { background: #334155; color: var(--text); border: none; }
+  #preview {
+    width: 100%; max-height: 340px; object-fit: contain;
+    border-radius: 8px; margin-top: 14px; display: none; background: #090d16;
+  }
+  .tiers-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; }
+  .tier-title {
+    display: flex; justify-content: space-between; align-items: center;
+    border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 12px;
+  }
+  .badge {
+    background: rgba(34, 197, 94, 0.15); color: var(--green);
+    padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 600;
+  }
+  table.kv { width: 100%; border-collapse: collapse; font-size: 14px; }
+  table.kv td { padding: 6px 4px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+  table.kv td.k { color: var(--muted); width: 135px; }
+  table.kv td.v { font-weight: 600; }
+  .swatch {
+    display: inline-block; width: 16px; height: 16px; border-radius: 4px;
+    vertical-align: middle; margin-right: 6px; border: 1px solid rgba(255,255,255,0.3);
+  }
+  pre.xml {
+    background: #090d16; border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px; font-size: 12px; overflow-x: auto; color: #7dd3fc; margin-top: 12px;
+  }
+  .status { color: var(--accent); font-size: 14px; margin-top: 10px; min-height: 20px; }
+</style>
+</head>
+<body>
+  <h1>filament-vision-server — Interactive Model Tester</h1>
+  <div class="sub">Drop any filament spool or box photo (.HEIC, .JPG, .PNG) or click "Random Seed Photo" to test CPU Hybrid &amp; GPU VLM models live.</div>
+
+  <div class="layout">
+    <div class="card">
+      <div class="dropzone" id="dropzone" onclick="document.getElementById('fileInput').click()">
+        <strong>Click or Drag &amp; Drop Image Here</strong><br>
+        <span style="color:var(--muted);font-size:12px">Supports .HEIC, .JPG, .PNG, .WEBP</span>
+        <input type="file" id="fileInput" accept=".heic,.heif,.jpg,.jpeg,.png,.webp" style="display:none">
+      </div>
+      <div class="controls">
+        <select id="tierSelect">
+          <option value="both">Compare Both (CPU + GPU)</option>
+          <option value="cpu" selected>CPU Hybrid Only (Fast)</option>
+          <option value="gpu">GPU VLM Only (Qwen2.5-VL-7B 4-bit)</option>
+          <option value="auto">Auto Tier (CPU -> GPU fallback)</option>
+        </select>
+        <button class="primary" onclick="runSelectedFile()">Analyze Image</button>
+      </div>
+      <div class="controls">
+        <button class="secondary" style="width:100%" onclick="testRandomSeed()">🎲 Load &amp; Test Random Seed Photo (.HEIC)</button>
+        <button class="secondary" style="width:100%" onclick="testRandomHarvested()">🌐 Load &amp; Test Random Verified Web Spool</button>
+      </div>
+      <div class="status" id="statusText">Ready.</div>
+      <img id="preview" alt="Preview">
+    </div>
+
+    <div id="resultsArea" class="tiers-grid">
+      <div class="card" style="color:var(--muted)">Upload an image or click <strong>Load &amp; Test Random Seed Photo</strong> to view predictions and XML output.</div>
+    </div>
+  </div>
+
+<script>
+let currentFile = null;
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+
+dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('dragover'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+dropzone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropzone.classList.remove('dragover');
+  if (e.dataTransfer.files.length) {
+    currentFile = e.dataTransfer.files[0];
+    runSelectedFile();
+  }
+});
+fileInput.addEventListener('change', () => {
+  if (fileInput.files.length) {
+    currentFile = fileInput.files[0];
+    runSelectedFile();
+  }
+});
+
+function renderTierCard(title, data) {
+  if (data.error) {
+    return `<div class="card"><div class="tier-title"><strong>${title}</strong></div><div style="color:#f87171">${data.error}</div></div>`;
+  }
+  const it = (data.dict && data.dict.items && data.dict.items[0]) || {};
+  const hex = it.color_hex || '808487';
+  const xmlEsc = (data.xml || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return `
+    <div class="card">
+      <div class="tier-title">
+        <strong>${title}</strong>
+        <span class="badge">${data.latency_ms} ms</span>
+      </div>
+      <table class="kv">
+        <tr><td class="k">Brand (vendor)</td><td class="v">${it.vendor || '-'}</td></tr>
+        <tr><td class="k">Product Line</td><td class="v">${it.line || '-'}</td></tr>
+        <tr><td class="k">Base Material</td><td class="v">${it.material || '-'}</td></tr>
+        <tr><td class="k">Color Name</td><td class="v">${it._color_name || '-'} (${it._color_family || '-'})</td></tr>
+        <tr><td class="k">Spoolman Name</td><td class="v">${it.name || '-'}</td></tr>
+        <tr><td class="k">Color Hex</td><td class="v"><span class="swatch" style="background:#${hex}"></span>#${hex}</td></tr>
+        <tr><td class="k">Nozzle / Bed</td><td class="v">${it.nozzle_range || '-'}°C (${it.nozzle || '-'}°C) / ${it.bed_range || '-'}°C</td></tr>
+        <tr><td class="k">Weight / Tare</td><td class="v">Net ${it.net || 1000}g / Tare ${it.tare || 200}g / Density ${it.density || 1.24}</td></tr>
+        <tr><td class="k">Sealed State</td><td class="v">${it.sealed ? 'Sealed (' + it.sealed_reason + ')' : 'Opened (' + it.sealed_reason + ')'}</td></tr>
+        <tr><td class="k">Source / Conf</td><td class="v">${it._source_type || '-'} (${Math.round((it._confidence || 0)*100)}%)</td></tr>
+      </table>
+      <pre class="xml">${xmlEsc}</pre>
+    </div>
+  `;
+}
+
+async function runSelectedFile() {
+  if (!currentFile) {
+    document.getElementById('statusText').textContent = 'Please select an image first.';
+    return;
+  }
+  const tier = document.getElementById('tierSelect').value;
+  document.getElementById('statusText').textContent = `Running ${tier.toUpperCase()} model on ${currentFile.name}...`;
+  const reader = new FileReader();
+  reader.onload = async () => {
+    const b64 = reader.result.split(',')[1];
+    const resp = await fetch('/api/test', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({filename: currentFile.name, image_b64: b64, tier: tier})
+    });
+    const res = await resp.json();
+    updateUI(res);
+  };
+  reader.readAsDataURL(currentFile);
+}
+
+async function testRandomSeed() {
+  const tier = document.getElementById('tierSelect').value;
+  document.getElementById('statusText').textContent = `Loading random .HEIC seed photo (${tier.toUpperCase()})...`;
+  const resp = await fetch(`/api/random_seed?tier=${encodeURIComponent(tier)}`);
+  const res = await resp.json();
+  updateUI(res);
+}
+
+async function testRandomHarvested() {
+  const tier = document.getElementById('tierSelect').value;
+  document.getElementById('statusText').textContent = `Loading random verified web spool (${tier.toUpperCase()})...`;
+  const resp = await fetch(`/api/random_harvested?tier=${encodeURIComponent(tier)}`);
+  const res = await resp.json();
+  updateUI(res);
+}
+
+function updateUI(res) {
+  if (res.preview_b64) {
+    const prev = document.getElementById('preview');
+    prev.src = 'data:image/jpeg;base64,' + res.preview_b64;
+    prev.style.display = 'block';
+  }
+  document.getElementById('statusText').textContent = `Finished: ${res.filename || 'image'}`;
+  let html = '';
+  for (const [label, tdata] of Object.entries(res.results || {})) {
+    html += renderTierCard(label, tdata);
+  }
+  document.getElementById('resultsArea').innerHTML = html;
+}
+</script>
+</body>
+</html>
+"""
+
+
+def _decode_any_image_to_jpeg_bytes(raw_bytes: bytes) -> bytes:
+    with Image.open(io.BytesIO(raw_bytes)) as im:
+        im = ImageOps.exif_transpose(im)
+        rgb = im.convert("RGB")
+        if max(rgb.size) > 1600:
+            scale = 1600.0 / max(rgb.size)
+            rgb = rgb.resize((int(rgb.size[0] * scale), int(rgb.size[1] * scale)), Image.Resampling.LANCZOS)
+        buf = io.BytesIO()
+        rgb.save(buf, format="JPEG", quality=92)
+        return buf.getvalue()
+
+
+def run_playground_server(host: str = "127.0.0.1", port: int = 7861) -> None:
+    recognizer = FilamentRecognizer(default_tier="auto")
+    seed_dir = PROJECT_ROOT / "seed images"
+
+    class PlaygroundHandler(BaseHTTPRequestHandler):
+        def log_message(self, fmt: str, *args: Any) -> None:
+            pass
+
+        def _send_json(self, code: int, obj: dict[str, Any]) -> None:
+            data = json.dumps(obj).encode("utf-8")
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def _evaluate_tiers(self, jpg_bytes: bytes, tier_mode: str) -> dict[str, Any]:
+            out: dict[str, Any] = {}
+            tiers_to_run = [("CPU Hybrid (ONNX)", "cpu"), ("GPU VLM (Qwen2.5-VL-7B 4-bit)", "gpu")] if tier_mode == "both" else [(f"{tier_mode.upper()} Mode", tier_mode)]
+            for label, t_name in tiers_to_run:
+                try:
+                    res = recognizer.predict([jpg_bytes], tier=t_name)
+                    out[label] = {
+                        "latency_ms": round(res.latency_ms, 1),
+                        "dict": res.to_filament_kit_dict(),
+                        "xml": res.to_xml(),
+                    }
+                except Exception as exc:
+                    out[label] = {"error": f"{exc}\n{traceback.format_exc()}"}
+            return out
+
+        def do_GET(self) -> None:
+            parsed = urlparse(self.path)
+            if parsed.path == "/":
+                body = PLAYGROUND_HTML.encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+
+            if parsed.path == "/api/random_seed":
+                qs = parse_qs(parsed.query)
+                tier = (qs.get("tier", ["cpu"])[0]).lower()
+                files = sorted(seed_dir.glob("*.HEIC"))
+                chosen = random.choice(files)
+                jpg_bytes = _decode_any_image_to_jpeg_bytes(chosen.read_bytes())
+                results = self._evaluate_tiers(jpg_bytes, tier)
+                self._send_json(
+                    200,
+                    {
+                        "filename": chosen.name,
+                        "preview_b64": base64.standard_b64encode(jpg_bytes).decode("ascii"),
+                        "results": results,
+                    },
+                )
+                return
+
+            if parsed.path == "/api/random_harvested":
+                qs = parse_qs(parsed.query)
+                tier = (qs.get("tier", ["cpu"])[0]).lower()
+                harvested_dir = PROJECT_ROOT / "data" / "harvested"
+                files = sorted(harvested_dir.glob("*.jpg"))
+                chosen = random.choice(files)
+                jpg_bytes = _decode_any_image_to_jpeg_bytes(chosen.read_bytes())
+                results = self._evaluate_tiers(jpg_bytes, tier)
+                self._send_json(
+                    200,
+                    {
+                        "filename": chosen.name,
+                        "preview_b64": base64.standard_b64encode(jpg_bytes).decode("ascii"),
+                        "results": results,
+                    },
+                )
+                return
+
+            self._send_json(404, {"error": "Not found"})
+
+        def do_POST(self) -> None:
+            if self.path != "/api/test":
+                self._send_json(404, {"error": "Not found"})
+                return
+            length = int(self.headers.get("Content-Length") or "0")
+            payload = json.loads(self.rfile.read(length).decode("utf-8"))
+            raw_bytes = base64.b64decode(payload["image_b64"])
+            tier = str(payload.get("tier") or "cpu").lower()
+            fname = str(payload.get("filename") or "uploaded_image")
+            jpg_bytes = _decode_any_image_to_jpeg_bytes(raw_bytes)
+            results = self._evaluate_tiers(jpg_bytes, tier)
+            self._send_json(
+                200,
+                {
+                    "filename": fname,
+                    "preview_b64": base64.standard_b64encode(jpg_bytes).decode("ascii"),
+                    "results": results,
+                },
+            )
+
+    server = ThreadingHTTPServer((host, port), PlaygroundHandler)
+    print(f"[Playground UI] Running at http://{host}:{port}")
+    server.serve_forever()
+
+
+if __name__ == "__main__":
+    run_playground_server()

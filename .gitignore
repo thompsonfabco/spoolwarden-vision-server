@@ -1,0 +1,47 @@
+# --- Private datasets, user feedback, and annotations ---
+seed images/
+data/seed_converted/
+data/harvested/
+data/synthetic/
+data/yolo_build/
+data/rfdetr_build/
+data/annotations/*
+data/feedback_queue/
+data/feedback_incoming/
+data/feedback_archived/
+data/feedback_verified/
+scratch/
+*.HEIC
+*.heic
+
+# --- Model weights & runtime config (shipped in self-contained bundle, never in git) ---
+*.pt
+*.pth
+*.onnx
+*.joblib
+*.npz
+*.safetensors
+*.bin
+*.gguf
+models/
+configs/service_config.xml
+runs/
+wandb/
+
+# --- Python / tooling / build outputs ---
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+release/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.gradio/
+*.pid
+.installed

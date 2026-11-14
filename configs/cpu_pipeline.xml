@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  CPU Hybrid Pipeline configuration for filament-kit-vision.
+  All models export to cross-platform ONNX for <150ms CPU inference.
+-->
+<cpu-pipeline version="1">
+  <detector model-type="rf-detr-n" input-size="384" conf-threshold="0.30" iou-threshold="0.45"
+            onnx-path="models/cpu/detector_rfdetr_n.onnx">
+    <classes>
+      <class id="0" name="box_label"/>
+      <class id="1" name="spool_label"/>
+      <class id="2" name="spool_windings"/>
+      <class id="3" name="spool_flange"/>
+    </classes>
+    <training epochs="8" batch-size="8" lr0="0.0001" device="cuda:0"/>
+  </detector>
+
+  <ocr engine="rapidocr-onnxruntime" det-limit-side-len="960" use-angle-cls="true"
+       circular-unwarp="true" unwarp-angles="0,180"/>
+
+  <visual-classifier backbone="mobilenetv3_large_100" input-size="224"
+                     onnx-path="models/cpu/visual_multihead.onnx">
+    <heads>
+      <head name="color_family" num-classes="14" loss-weight="1.0"/>
+      <head name="visual_finish" num-classes="8" loss-weight="0.8"/>
+      <head name="visual_vendor" num-classes="21" loss-weight="1.2"/>
+      <head name="sealed_state" num-classes="3" loss-weight="0.6"/>
+    </heads>
+    <training epochs="35" batch-size="32" lr="0.001" weight-decay="0.0001" device="cuda:0"/>
+  </visual-classifier>
+
+  <text-parser model-path="models/cpu/text_parser.joblib"
+               fuzzy-threshold="78.0"
+               catalog-weight="0.65"
+               classifier-weight="0.35"/>
+
+  <color-extractor space="LAB" specular-l-max="94" shadow-l-min="8" k-clusters="3"/>
+</cpu-pipeline>
