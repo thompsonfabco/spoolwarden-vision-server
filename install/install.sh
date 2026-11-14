@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Standalone Linux installer for filament-vision-server (v1.0.0)
+# Standalone Linux installer for filament-vision-server (v0.2.0)
 # Usage:
 #   sudo bash install/install.sh [options]
 # Options:

@@ -87,7 +87,7 @@ def test_health_and_cors_preflight(standalone_server):
     assert hdrs.get("access-control-allow-origin") == "*"
     payload = json.loads(raw.decode("utf-8"))
     assert payload["service"] == "filament-vision-server"
-    assert payload["module_version"] == "1.0.0"
+    assert payload["module_version"] == "0.2.0"
     assert payload["status"] == "ok"
     assert payload["tiers"]["cpu"]["usable"] is True
 
@@ -116,7 +116,7 @@ def test_read_and_revise_cpu_tier(standalone_server):
     assert isinstance(data.get("items"), list) and len(data["items"]) >= 1
     first = data["items"][0]
     assert "vendor" in first and "material" in first and "diameter" in first
-    assert data["reader"]["module_version"] == "1.0.0"
+    assert data["reader"]["module_version"] == "0.2.0"
 
     rev_status, _, rev_raw = _http_request(
         f"{base_url}/v1/revise",

@@ -80,7 +80,7 @@ for _ in range(30):
         time.sleep(1.0)
 
 assert health is not None and health.get("status") == "ok", f"Health check failed: {health}"
-assert health.get("module_version") == "1.0.0", f"Unexpected module_version: {health}"
+assert health.get("module_version") == "0.2.0", f"Unexpected module_version: {health}"
 print("[wsl_test] /v1/health OK:", health["module_version"], health["status"])
 
 with urllib.request.urlopen(f"{base}/", timeout=5.0) as resp:

@@ -1,4 +1,4 @@
-# Filament Vision Server (`v1.0.0`)
+# Filament Vision Server (`v0.2.0`)
 
 Standalone cross-platform 3D printer filament spool recognition server for **Linux** and **Windows**, featuring:
 
@@ -133,7 +133,7 @@ CORS (`Access-Control-Allow-Origin: *`) is enabled for local web integrations, w
 
 ## Building a Self-Contained Release Bundle
 
-Package source code, installers, launchers, configs, catalog, and trained model weights into `dist/filament-vision-server-1.0.0/` with `manifest.json` and `SHA256SUMS`:
+Package source code, installers, launchers, configs, catalog, and trained model weights into `dist/filament-vision-server-0.2.0/` with `manifest.json` and `SHA256SUMS`:
 
 ```bash
 python tools/build_standalone_bundle.py
