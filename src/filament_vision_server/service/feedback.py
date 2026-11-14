@@ -248,40 +248,165 @@ class FeedbackQueue:
                         (self.queue_dir / fname).unlink(missing_ok=True)
             self.xml_path.unlink(missing_ok=True)
 
-    def build_bundle_zip(self) -> bytes:
-        st = self.status()
-        if st["count"] == 0:
-            raise ValueError("Feedback queue is empty")
+    def _build_entries_zip(self, entry_els: list[StdET.Element]) -> bytes:
+        """Package a subset of <entry> elements and their image files into an in-memory ZIP."""
+        sub_root = StdET.Element("feedback-queue", attrib={"version": "1"})
+        for el in entry_els:
+            sub_root.append(el)
+        StdET.indent(sub_root, space="  ")
+        xml_bytes = b'<?xml version="1.0" encoding="UTF-8"?>\n' + StdET.tostring(sub_root, encoding="utf-8") + b"\n"
 
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-            zf.write(self.xml_path, arcname="pending_feedback.xml")
-            for entry in st["entries"]:
-                for fname in entry["images"]:
+            zf.writestr("pending_feedback.xml", xml_bytes)
+            for entry_el in entry_els:
+                for im in entry_el.findall("./images/image"):
+                    fname = (im.text or "").strip()
+                    if not fname:
+                        continue
                     fpath = self.queue_dir / fname
                     if fpath.is_file():
                         zf.write(fpath, arcname=fname)
+        return buf.getvalue()
 
-        raw = buf.getvalue()
-        if len(raw) > MAX_FEEDBACK_ZIP_BYTES:
+    def build_bundle_zip(self, max_bytes: int | None = None) -> bytes:
+        """Build a ZIP containing all queued feedback entries (uncapped by default for local download)."""
+        if not self.xml_path.is_file():
+            raise ValueError("Feedback queue is empty")
+        root = self._load_root()
+        entry_els = root.findall("entry")
+        if not entry_els:
+            raise ValueError("Feedback queue is empty")
+
+        raw = self._build_entries_zip(entry_els)
+        if max_bytes is not None and len(raw) > max_bytes:
             raise ValueError(
-                f"Feedback bundle ({len(raw)} bytes) exceeds {MAX_FEEDBACK_ZIP_BYTES} byte limit; remove some entries"
+                f"Feedback bundle ({len(raw)} bytes) exceeds {max_bytes} byte limit; remove some entries"
             )
         return raw
 
-    def submit(self, endpoint_url: str, timeout: float = 45.0) -> dict[str, Any]:
-        url = endpoint_url.strip()
-        if not url or not (url.startswith("https://") or url.startswith("http://127.0.0.1")):
-            raise ValueError("A valid HTTPS feedback upload endpoint must be configured")
+    def _entry_raw_bytes(self, entry_el: StdET.Element) -> int:
+        total = len(StdET.tostring(entry_el, encoding="utf-8")) + 256
+        for im in entry_el.findall("./images/image"):
+            fname = (im.text or "").strip()
+            if not fname:
+                continue
+            fpath = self.queue_dir / fname
+            if fpath.is_file():
+                total += fpath.stat().st_size + 128
+        return total
 
-        st = self.status()
-        zip_bytes = self.build_bundle_zip()
-        stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    def build_bundle_batches(self, max_zip_bytes: int | None = None) -> list[tuple[list[str], bytes]]:
+        """Split queued feedback entries into ZIP batches each <= max_zip_bytes."""
+        if not self.xml_path.is_file():
+            raise ValueError("Feedback queue is empty")
+        root = self._load_root()
+        entry_els = root.findall("entry")
+        if not entry_els:
+            raise ValueError("Feedback queue is empty")
+
+        limit = MAX_FEEDBACK_ZIP_BYTES if max_zip_bytes is None else int(max_zip_bytes)
+        soft_check_floor = int(limit * 0.85)
+        batches: list[tuple[list[str], bytes]] = []
+        current_els: list[StdET.Element] = []
+        current_bytes: bytes = b""
+        current_est_bytes = 0
+
+        for entry_el in entry_els:
+            eid = entry_el.attrib.get("id", "")
+            entry_est = self._entry_raw_bytes(entry_el)
+            candidate_els = current_els + [entry_el]
+            candidate_est = current_est_bytes + entry_est
+
+            if current_els and candidate_est < soft_check_floor:
+                current_els = candidate_els
+                current_bytes = b""
+                current_est_bytes = candidate_est
+                continue
+
+            candidate_bytes = self._build_entries_zip(candidate_els)
+            if len(candidate_bytes) <= limit:
+                current_els = candidate_els
+                current_bytes = candidate_bytes
+                current_est_bytes = candidate_est
+                continue
+
+            if current_els:
+                flush_bytes = current_bytes or self._build_entries_zip(current_els)
+                batches.append(([e.attrib.get("id", "") for e in current_els], flush_bytes))
+                single_bytes = self._build_entries_zip([entry_el])
+                if len(single_bytes) > limit:
+                    raise ValueError(
+                        f"Feedback entry {eid or '<unknown>'} ({len(single_bytes)} bytes) exceeds single-batch limit ({limit} bytes)"
+                    )
+                current_els = [entry_el]
+                current_bytes = single_bytes
+                current_est_bytes = entry_est
+            else:
+                raise ValueError(
+                    f"Feedback entry {eid or '<unknown>'} ({len(candidate_bytes)} bytes) exceeds single-batch limit ({limit} bytes)"
+                )
+
+        if current_els:
+            final_bytes = current_bytes or self._build_entries_zip(current_els)
+            if len(final_bytes) > limit and len(current_els) > 1:
+                # Rare incompressible edge case where estimated size stayed under 85% but ZIP exceeded limit
+                sub_queue = FeedbackQueue(self.queue_dir)
+                sub_batches = sub_queue._split_elements_exact(current_els, limit)
+                batches.extend(sub_batches)
+            elif len(final_bytes) > limit:
+                eid = current_els[0].attrib.get("id", "")
+                raise ValueError(
+                    f"Feedback entry {eid or '<unknown>'} ({len(final_bytes)} bytes) exceeds single-batch limit ({limit} bytes)"
+                )
+            else:
+                batches.append(([e.attrib.get("id", "") for e in current_els], final_bytes))
+        return batches
+
+    def _split_elements_exact(
+        self, entry_els: list[StdET.Element], limit: int
+    ) -> list[tuple[list[str], bytes]]:
+        batches: list[tuple[list[str], bytes]] = []
+        current_els: list[StdET.Element] = []
+        current_bytes: bytes = b""
+        for entry_el in entry_els:
+            candidate_els = current_els + [entry_el]
+            candidate_bytes = self._build_entries_zip(candidate_els)
+            if len(candidate_bytes) <= limit:
+                current_els = candidate_els
+                current_bytes = candidate_bytes
+            elif current_els:
+                batches.append(([e.attrib.get("id", "") for e in current_els], current_bytes))
+                single_bytes = self._build_entries_zip([entry_el])
+                if len(single_bytes) > limit:
+                    eid = entry_el.attrib.get("id", "")
+                    raise ValueError(
+                        f"Feedback entry {eid or '<unknown>'} ({len(single_bytes)} bytes) exceeds single-batch limit ({limit} bytes)"
+                    )
+                current_els = [entry_el]
+                current_bytes = single_bytes
+            else:
+                eid = entry_el.attrib.get("id", "")
+                raise ValueError(
+                    f"Feedback entry {eid or '<unknown>'} ({len(candidate_bytes)} bytes) exceeds single-batch limit ({limit} bytes)"
+                )
+        if current_els:
+            batches.append(([e.attrib.get("id", "") for e in current_els], current_bytes))
+        return batches
+
+    def _post_zip_batch(
+        self,
+        url: str,
+        filename: str,
+        entry_count: int,
+        zip_bytes: bytes,
+        timeout: float,
+    ) -> dict[str, Any]:
         payload = json.dumps(
             {
-                "filename": f"filament-feedback-{stamp}.zip",
+                "filename": filename,
                 "mime_type": "application/zip",
-                "entry_count": st["count"],
+                "entry_count": entry_count,
                 "zip_b64": base64.b64encode(zip_bytes).decode("ascii"),
             }
         ).encode("utf-8")
@@ -312,13 +437,56 @@ class FeedbackQueue:
         if isinstance(parsed, dict) and parsed.get("ok") is False:
             raise RuntimeError(f"Upload rejected by server: {parsed.get('error', resp_body)}")
 
-        submitted_count = st["count"]
-        self.clear()
+        return parsed if isinstance(parsed, dict) else {"ok": True, "raw": resp_body}
+
+    def submit(
+        self,
+        endpoint_url: str,
+        timeout: float = 45.0,
+        max_zip_bytes: int | None = None,
+    ) -> dict[str, Any]:
+        """Upload queued feedback entries in <= max_zip_bytes ZIP batches, pruning each uploaded batch."""
+        url = endpoint_url.strip()
+        if not url or not (url.startswith("https://") or url.startswith("http://127.0.0.1")):
+            raise ValueError("A valid HTTPS feedback upload endpoint must be configured")
+
+        batches = self.build_bundle_batches(max_zip_bytes=max_zip_bytes)
+        total_batches = len(batches)
+        stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+        total_submitted = 0
+        total_bytes = 0
+        responses: list[dict[str, Any]] = []
+
+        for batch_idx, (entry_ids, zip_bytes) in enumerate(batches, start=1):
+            filename = (
+                f"filament-feedback-{stamp}.zip"
+                if total_batches == 1
+                else f"filament-feedback-{stamp}-part{batch_idx}of{total_batches}.zip"
+            )
+            parsed = self._post_zip_batch(
+                url=url,
+                filename=filename,
+                entry_count=len(entry_ids),
+                zip_bytes=zip_bytes,
+                timeout=timeout,
+            )
+            responses.append(parsed)
+            total_submitted += len(entry_ids)
+            total_bytes += len(zip_bytes)
+            for eid in entry_ids:
+                if eid:
+                    self.delete(eid)
+
+        if not self.status()["count"]:
+            self.clear()
+
         return {
             "ok": True,
-            "submitted_count": submitted_count,
-            "bundle_bytes": len(zip_bytes),
-            "server_response": parsed,
+            "submitted_count": total_submitted,
+            "batches_submitted": total_batches,
+            "bundle_bytes": total_bytes,
+            "server_response": responses[0] if len(responses) == 1 else responses,
         }
 
 

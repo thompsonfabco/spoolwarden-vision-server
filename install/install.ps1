@@ -588,7 +588,7 @@ $env:FILAMENT_VISION_SERVER_HOME = $TargetPrefix
 & $venvPy -m filament_vision_server.service.cli config --tier $Tier --host $Bind --port $Port | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "Failed to write service_config.xml." }
 
-Set-Content -Path (Join-Path $TargetPrefix ".installed") -Value "0.2.0" -Encoding ASCII
+Set-Content -Path (Join-Path $TargetPrefix ".installed") -Value "0.2.1" -Encoding ASCII
 
 if ($RegisterStartup) {
     try {

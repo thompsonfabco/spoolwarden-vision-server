@@ -789,7 +789,8 @@ async function submitFeedback() {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.message || data.error?.message || `HTTP ${res.status}`);
-    setStatus(`Uploaded ${data.submitted_count} feedback entries.`);
+    const batchNote = (data.batches_submitted && data.batches_submitted > 1) ? ` in ${data.batches_submitted} batches` : "";
+    setStatus(`Uploaded ${data.submitted_count} feedback entries${batchNote}.`);
     refreshHealthAndFeedback();
   } catch (err) {
     setStatus("Upload failed: " + err.message, true);

@@ -1,9 +1,9 @@
-# Filament Vision Server (`v0.2.0`)
+# Filament Vision Server (`v0.2.1`)
 
 Standalone, cross-platform 3D printer filament spool recognition server for **Windows** and **Linux**, with a built-in dark-mode Web UI, dual-tier **ONNX CPU + Qwen2.5-VL GPU** inference, catalog enrichment, opt-in training feedback collection, and a CORS-enabled HTTP REST API (`v1`).
 
 > [!TIP]
-> **New user?** Jump straight to the step-by-step **[User QuickStart Guide (`QUICKSTART.md`)](QUICKSTART.md)** or download a ready-to-run package from the **[`v0.2.0` Release](https://github.com/thompsonfabco/filament-vision-server/releases/tag/v0.2.0)**.
+> **New user?** Jump straight to the step-by-step **[User QuickStart Guide (`QUICKSTART.md`)](QUICKSTART.md)** or download a ready-to-run package from the **[`v0.2.1` Release](https://github.com/thompsonfabco/filament-vision-server/releases/tag/v0.2.1)**.
 
 ---
 
@@ -18,22 +18,23 @@ Standalone, cross-platform 3D printer filament spool recognition server for **Wi
   - **CPU Tier (always available):** RF-DETR-N ONNX object detector (`detector_rfdetr_n.onnx`) + circular spool-label unwarper + RapidOCR + MobileNetV3-Large ONNX multi-head classifier (`visual_multihead.onnx`) + learned text parser (`text_parser.npz`) + LAB-space filament color clustering (`color_lab.py`) + fuzzy catalog matcher (`46` vendors, `1,115` product lines, `3,979` colors).
   - **GPU Tier (optional CUDA):** `Qwen/Qwen2.5-VL-7B-Instruct` (4-bit NF4, SHA-256 verified pinned revision in `configs/base-model.json`) with LoRA adapter (`models/gpu/qwen25_vl_7b_filament_lora/`), automatic escalation in `auto` mode when `vendor == "Unknown"` or `confidence < 0.78`, and automatic idle VRAM unloading (`idle_unload_seconds`, default `300s`).
 - **Opt-In Correction Training Feedback Loop:**
-  - Disabled by default (`feedback_opt_in=false`). When enabled, strips all EXIF/GPS/ICC metadata, resizes images to `<= 1024 px`, and queues clean `(images, predicted, corrected, note)` pairs for local `.zip` export or one-click upload (`POST /v1/feedback/submit`).
+  - Disabled by default (`feedback_opt_in=false`). When enabled, strips all EXIF/GPS/ICC metadata, resizes images to `<= 1024 px`, and queues clean `(images, predicted, corrected, note)` pairs.
+  - Supports **uncapped local `.zip` downloads** (`GET /v1/feedback/bundle.zip`) and **automatic multi-batch `<= 25 MB` splitting** for large queues during cloud upload (`POST /v1/feedback/submit`), removing each batch cleanly as it succeeds.
 - **Automated Cross-Platform Installers:**
   - `install\install.ps1` / `install.bat` (Windows) and `install/install.sh` (Linux) automatically check, download, install, and verify OS libraries, Python `3.10–3.14`, Microsoft VC++ Redistributable (Windows), `uv` Python runtime fallback (Linux), CUDA PyTorch wheels, and Python dependencies — falling back to interactive prompts if manual intervention is required.
 
 ---
 
-## Release Packages (`v0.2.0`)
+## Release Packages (`v0.2.1`)
 
-Platform-specific archives (`.zip` for Windows, `.tar.gz` for Linux) are published on the [GitHub Releases page](https://github.com/thompsonfabco/filament-vision-server/releases/tag/v0.2.0):
+Platform-specific archives (`.zip` for Windows, `.tar.gz` for Linux) are published on the [GitHub Releases page](https://github.com/thompsonfabco/filament-vision-server/releases/tag/v0.2.1):
 
 | Archive | Platform | Size | Tier Bundle |
 | :--- | :--- | :---: | :--- |
-| `filament-vision-server-0.2.0-windows.zip` | Windows (x64) | 315.87 MB | Full (`models/cpu` + `models/gpu` LoRA adapter) |
-| `filament-vision-server-0.2.0-windows-cpu.zip` | Windows (x64) | 146.18 MB | CPU-Only (`models/cpu` ONNX + OCR + catalog) |
-| `filament-vision-server-0.2.0-linux.tar.gz` | Linux (x86_64) | 315.76 MB | Full (`models/cpu` + `models/gpu` LoRA adapter) |
-| `filament-vision-server-0.2.0-linux-cpu.tar.gz` | Linux (x86_64) | 146.15 MB | CPU-Only (`models/cpu` ONNX + OCR + catalog) |
+| `filament-vision-server-0.2.1-windows.zip` | Windows (x64) | ~316 MB | Full (`models/cpu` + `models/gpu` LoRA adapter) |
+| `filament-vision-server-0.2.1-windows-cpu.zip` | Windows (x64) | ~146 MB | CPU-Only (`models/cpu` ONNX + OCR + catalog) |
+| `filament-vision-server-0.2.1-linux.tar.gz` | Linux (x86_64) | ~316 MB | Full (`models/cpu` + `models/gpu` LoRA adapter) |
+| `filament-vision-server-0.2.1-linux-cpu.tar.gz` | Linux (x86_64) | ~146 MB | CPU-Only (`models/cpu` ONNX + OCR + catalog) |
 
 Every release also includes `manifest.json`, `SHA256SUMS`, and an RFC 8032 Ed25519 signature `SHA256SUMS.sig`.
 
@@ -60,7 +61,7 @@ For full screenshots-free walkthroughs, firewall/LAN setup, and troubleshooting,
 
 ### Windows (One-Click)
 
-1. Extract `filament-vision-server-0.2.0-windows*.zip`.
+1. Extract `filament-vision-server-0.2.1-windows*.zip`.
 2. Double-click **`install.bat`** (or run PowerShell):
    ```powershell
    powershell -ExecutionPolicy Bypass -File .\install\install.ps1 -Start -OpenBrowser
@@ -81,8 +82,8 @@ Supported `install\install.ps1` options:
 Extract the `.tar.gz` archive and run `install/install.sh`:
 
 ```bash
-tar -xzf filament-vision-server-0.2.0-linux-cpu.tar.gz
-cd filament-vision-server-0.2.0-linux-cpu
+tar -xzf filament-vision-server-0.2.1-linux-cpu.tar.gz
+cd filament-vision-server-0.2.1-linux-cpu
 
 # System service install (/opt/filament-vision-server + systemd unit):
 sudo bash install/install.sh
@@ -187,8 +188,8 @@ Default listen address: `http://127.0.0.1:7920`. CORS (`Access-Control-Allow-Ori
 | `GET` | `/v1/feedback` | Check feedback opt-in state and queued entry count |
 | `POST` | `/v1/feedback` | Enqueue an EXIF-stripped correction (`images_b64`, `predicted`, `corrected`, `note`) |
 | `DELETE` | `/v1/feedback/<id>` | Remove a specific queued feedback entry |
-| `POST` | `/v1/feedback/submit` | Upload queued feedback bundle to the configured feedback endpoint |
-| `GET` | `/v1/feedback/bundle.zip` | Download `filament-feedback-bundle.zip` |
+| `POST` | `/v1/feedback/submit` | Upload queued feedback entries in automatic `<= 25 MB` ZIP batches |
+| `GET` | `/v1/feedback/bundle.zip` | Download `filament-feedback-bundle.zip` (uncapped local export) |
 
 ### `curl` Examples
 
@@ -257,7 +258,7 @@ tools\run_wsl_installer_test.bat
 
 ### Build Platform-Specific Release Archives
 
-Stage bundles in `dist/` and package platform-specific archives (`.zip` for Windows, `.tar.gz` for Linux) with `manifest.json`, `SHA256SUMS`, and Ed25519 `SHA256SUMS.sig` under `release/v0.2.0/`:
+Stage bundles in `dist/` and package platform-specific archives (`.zip` for Windows, `.tar.gz` for Linux) with `manifest.json`, `SHA256SUMS`, and Ed25519 `SHA256SUMS.sig` under `release/v0.2.1/`:
 
 ```bash
 # Single platform bundle:
@@ -265,7 +266,7 @@ python tools/build_standalone_bundle.py --platform windows
 python tools/build_standalone_bundle.py --platform linux --no-gpu
 
 # Full signed release (windows.zip, windows-cpu.zip, linux.tar.gz, linux-cpu.tar.gz):
-python tools/build_standalone_bundle.py --version 0.2.0 --build-release --key-file /path/to/release_key.pem
+python tools/build_standalone_bundle.py --version 0.2.1 --build-release --key-file /path/to/release_key.pem
 ```
 
 ---

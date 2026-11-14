@@ -15,6 +15,7 @@ import pytest
 from PIL import Image, ImageDraw
 
 from filament_vision_server.service import daemon as daemon_mod
+from filament_vision_server.service import feedback as feedback_mod
 
 
 def _make_sample_spool_jpeg() -> bytes:
@@ -87,7 +88,7 @@ def test_health_and_cors_preflight(standalone_server):
     assert hdrs.get("access-control-allow-origin") == "*"
     payload = json.loads(raw.decode("utf-8"))
     assert payload["service"] == "filament-vision-server"
-    assert payload["module_version"] == "0.2.0"
+    assert payload["module_version"] == "0.2.1"
     assert payload["status"] == "ok"
     assert payload["tiers"]["cpu"]["usable"] is True
 
@@ -116,7 +117,7 @@ def test_read_and_revise_cpu_tier(standalone_server):
     assert isinstance(data.get("items"), list) and len(data["items"]) >= 1
     first = data["items"][0]
     assert "vendor" in first and "material" in first and "diameter" in first
-    assert data["reader"]["module_version"] == "0.2.0"
+    assert data["reader"]["module_version"] == "0.2.1"
 
     rev_status, _, rev_raw = _http_request(
         f"{base_url}/v1/revise",
@@ -250,3 +251,93 @@ def test_platform_specific_bundle_builder():
     text = builder.read_text(encoding="utf-8")
     for token in ("_pack_zip", "_pack_tar_gz", '"windows"', '"linux"', "--platform", "--build-release"):
         assert token in text
+
+
+def test_feedback_multi_batch_splitting(standalone_server, monkeypatch):
+    import http.server
+    import xml.etree.ElementTree as ET
+
+    base_url, _, _ = standalone_server
+    _http_request(
+        f"{base_url}/v1/config",
+        method="POST",
+        payload={"api_version": "1.0", "feedback_opt_in": True},
+    )
+
+    jpg_b64 = base64.b64encode(_make_sample_spool_jpeg()).decode("ascii")
+    entry_ids = []
+    for idx in range(3):
+        _, _, raw_enq = _http_request(
+            f"{base_url}/v1/feedback",
+            method="POST",
+            payload={
+                "api_version": "1.0",
+                "images_b64": [jpg_b64],
+                "predicted": {"vendor": "Unknown", "material": "PLA"},
+                "corrected": {"vendor": "Hatchbox", "material": "PLA", "color_name": f"Orange {idx}"},
+            },
+        )
+        entry_ids.append(json.loads(raw_enq.decode("utf-8"))["id"])
+
+    # Local bundle download must work uncapped even when MAX_FEEDBACK_ZIP_BYTES is smaller than the full zip
+    _, _, full_zip = _http_request(f"{base_url}/v1/feedback/bundle.zip")
+    with zipfile.ZipFile(io.BytesIO(full_zip), "r") as zf:
+        root_all = ET.fromstring(zf.read("pending_feedback.xml"))
+        assert len(root_all.findall("entry")) == 3
+
+    # Force 1-entry batches on upload: pick a limit strictly between 1 entry zip and full 3-entry zip
+    monkeypatch.setattr(feedback_mod, "MAX_FEEDBACK_ZIP_BYTES", len(full_zip) // 2)
+    _, _, capped_full_zip = _http_request(f"{base_url}/v1/feedback/bundle.zip")
+    assert len(capped_full_zip) == len(full_zip)
+
+    received_batches: list[dict] = []
+
+    class MockUploadHandler(http.server.BaseHTTPRequestHandler):
+        def do_POST(self):
+            length = int(self.headers.get("Content-Length") or "0")
+            body = json.loads(self.rfile.read(length).decode("utf-8"))
+            received_batches.append(body)
+            resp = json.dumps({"ok": True, "batch_received": len(received_batches)}).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(resp)))
+            self.end_headers()
+            self.wfile.write(resp)
+
+        def log_message(self, format, *args):
+            pass
+
+    mock_srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), MockUploadHandler)
+    mock_thread = threading.Thread(target=mock_srv.serve_forever, daemon=True)
+    mock_thread.start()
+    try:
+        m_host, m_port = mock_srv.server_address[:2]
+        st_sub, _, raw_sub = _http_request(
+            f"{base_url}/v1/feedback/submit",
+            method="POST",
+            payload={"api_version": "1.0", "endpoint": f"http://{m_host}:{m_port}/exec"},
+        )
+        assert st_sub == 200
+        sub_res = json.loads(raw_sub.decode("utf-8"))
+        assert sub_res["ok"] is True
+        assert sub_res["submitted_count"] == 3
+        assert sub_res["batches_submitted"] == 3
+        assert len(received_batches) == 3
+
+        seen_ids = []
+        for idx, b in enumerate(received_batches, start=1):
+            assert f"part{idx}of3.zip" in b["filename"]
+            zraw = base64.b64decode(b["zip_b64"])
+            assert len(zraw) <= len(full_zip) // 2
+            with zipfile.ZipFile(io.BytesIO(zraw), "r") as zf:
+                sub_root = ET.fromstring(zf.read("pending_feedback.xml"))
+                ents = sub_root.findall("entry")
+                assert len(ents) == 1
+                seen_ids.append(ents[0].attrib["id"])
+        assert sorted(seen_ids) == sorted(entry_ids)
+
+        _, _, raw_fb = _http_request(f"{base_url}/v1/feedback")
+        assert json.loads(raw_fb.decode("utf-8"))["count"] == 0
+    finally:
+        mock_srv.shutdown()
+        mock_srv.server_close()
