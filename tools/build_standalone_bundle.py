@@ -33,6 +33,7 @@ DEFAULT_VERSION = "0.2.0"
 COMMON_ROOT_FILES = (
     "pyproject.toml",
     "README.md",
+    "QUICKSTART.md",
     "LICENSE",
     "THIRD-PARTY.md",
     ".gitignore",
