@@ -131,14 +131,17 @@ CORS (`Access-Control-Allow-Origin: *`) is enabled for local web integrations, w
 
 ---
 
-## Building a Self-Contained Release Bundle
+## Building Self-Contained Platform Bundles & Releases
 
-Package source code, installers, launchers, configs, catalog, and trained model weights into `dist/filament-vision-server-0.2.0/` with `manifest.json` and `SHA256SUMS`:
+Stage platform-specific bundles into `dist/` and build signed archives (`.zip` for Windows, `.tar.gz` for Linux) under `release/v0.2.0/` with `manifest.json`, `SHA256SUMS`, and `SHA256SUMS.sig`:
 
 ```bash
-python tools/build_standalone_bundle.py
-# CPU-only bundle (smaller, no 200 MB GPU LoRA adapter):
-python tools/build_standalone_bundle.py --no-gpu
+# Single platform bundle (--platform windows or --platform linux, optional --no-gpu):
+python tools/build_standalone_bundle.py --platform windows
+python tools/build_standalone_bundle.py --platform linux --no-gpu
+
+# Full signed release (Windows .zip + Linux .tar.gz for both full and CPU-only tiers):
+python tools/build_standalone_bundle.py --version 0.2.0 --build-release --key-file /path/to/release_key.pem
 ```
 
 ---

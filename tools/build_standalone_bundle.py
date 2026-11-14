@@ -1,7 +1,8 @@
-"""Build self-contained distribution bundles and signed GitHub release archives for filament-vision-server.
+"""Build platform-specific standalone bundles and signed GitHub release archives for filament-vision-server.
 
-Stages source code, Linux/Windows installers, static configs, catalog XML,
-CPU ONNX models, and optional GPU LoRA weights into dist/ alongside
+Stages source code, platform-specific installers, static configs, catalog XML,
+CPU ONNX models, and optional GPU LoRA weights into dist/ and packs native
+archives (.zip for Windows, .tar.gz for Linux) under release/v<version>/ alongside
 manifest.json, SHA256SUMS, and optional Ed25519 SHA256SUMS.sig.
 """
 from __future__ import annotations
@@ -29,13 +30,16 @@ from sign_release import generate_sha256sums, sign, verify  # noqa: E402
 
 DEFAULT_VERSION = "0.2.0"
 
-ROOT_FILES = (
+COMMON_ROOT_FILES = (
     "pyproject.toml",
     "README.md",
     "LICENSE",
     "THIRD-PARTY.md",
     ".gitignore",
     ".gitattributes",
+)
+
+WINDOWS_ROOT_FILES = (
     "install.bat",
     "start_server.bat",
     "stop_server.bat",
@@ -57,17 +61,23 @@ def _sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
-def _copy_tree_filtered(src_dir: Path, dst_dir: Path, skip_names: Iterable[str] = ("__pycache__",)) -> None:
+def _copy_tree_filtered(
+    src_dir: Path,
+    dst_dir: Path,
+    skip_dirs: Iterable[str] = ("__pycache__",),
+    skip_suffixes: Iterable[str] = (".pyc",),
+) -> None:
     if not src_dir.is_dir():
         return
-    skip_set = set(skip_names)
+    skip_dir_set = set(skip_dirs)
+    skip_suf_tuple = tuple(skip_suffixes)
     for root, dirs, files in os.walk(src_dir):
-        dirs[:] = [d for d in dirs if d not in skip_set and not d.endswith(".egg-info")]
+        dirs[:] = [d for d in dirs if d not in skip_dir_set and not d.endswith(".egg-info")]
         rel = Path(root).relative_to(src_dir)
         out_root = dst_dir / rel
         out_root.mkdir(parents=True, exist_ok=True)
         for name in files:
-            if name.endswith(".pyc") or name in skip_set:
+            if name.endswith(skip_suf_tuple):
                 continue
             src_file = Path(root) / name
             dst_file = out_root / name
@@ -80,28 +90,61 @@ def _copy_tree_filtered(src_dir: Path, dst_dir: Path, skip_names: Iterable[str] 
                     dst_file.chmod(mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
 
+def _default_bundle_name(version: str, platform: str, include_gpu: bool) -> str:
+    parts = [f"filament-vision-server-{version}"]
+    if platform in ("windows", "linux"):
+        parts.append(platform)
+    if not include_gpu:
+        parts.append("cpu")
+    return "-".join(parts)
+
+
 def build_bundle(
     version: str = DEFAULT_VERSION,
     output_dir: str | Path | None = None,
     include_gpu: bool = True,
+    platform: str = "all",
     key_file: str | Path | None = None,
     bundle_name: str | None = None,
 ) -> Path:
+    plat = platform.lower()
+    if plat not in ("all", "windows", "linux"):
+        raise ValueError(f"Unsupported platform '{platform}' (expected all, windows, or linux)")
+
     base_out = Path(output_dir) if output_dir else (PROJECT_ROOT / "dist")
     if bundle_name is None:
-        bundle_name = f"filament-vision-server-{version}" if include_gpu else f"filament-vision-server-{version}-cpu"
+        bundle_name = _default_bundle_name(version, plat, include_gpu)
     bundle_dir = base_out / bundle_name
     if bundle_dir.exists():
         shutil.rmtree(bundle_dir)
     bundle_dir.mkdir(parents=True, exist_ok=True)
 
-    for rel in ROOT_FILES:
+    root_files = list(COMMON_ROOT_FILES)
+    if plat in ("all", "windows"):
+        root_files.extend(WINDOWS_ROOT_FILES)
+
+    for rel in root_files:
         src = PROJECT_ROOT / rel
         if src.is_file():
             shutil.copy2(src, bundle_dir / rel)
 
+    if plat == "windows":
+        skip_dirs: tuple[str, ...] = ("__pycache__", "systemd")
+        skip_suffixes: tuple[str, ...] = (".pyc", ".sh", ".service")
+    elif plat == "linux":
+        skip_dirs = ("__pycache__",)
+        skip_suffixes = (".pyc", ".bat", ".ps1")
+    else:
+        skip_dirs = ("__pycache__",)
+        skip_suffixes = (".pyc",)
+
     for rel_dir in ("src", "install", "tools"):
-        _copy_tree_filtered(PROJECT_ROOT / rel_dir, bundle_dir / rel_dir)
+        _copy_tree_filtered(
+            PROJECT_ROOT / rel_dir,
+            bundle_dir / rel_dir,
+            skip_dirs=skip_dirs,
+            skip_suffixes=skip_suffixes,
+        )
 
     cfg_dst = bundle_dir / "configs"
     cfg_dst.mkdir(parents=True, exist_ok=True)
@@ -160,6 +203,7 @@ def build_bundle(
     manifest = {
         "service": "filament-vision-server",
         "version": version,
+        "platform": plat,
         "bundle": bundle_name,
         "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "include_gpu": bool(include_gpu and gpu_count > 0),
@@ -178,12 +222,10 @@ def build_bundle(
     return bundle_dir
 
 
-def _pack_zip_and_tar_gz(bundle_dir: Path, release_dir: Path) -> tuple[Path, Path]:
+def _pack_zip(bundle_dir: Path, release_dir: Path) -> Path:
     top_name = bundle_dir.name
     zip_path = release_dir / f"{top_name}.zip"
-    tar_path = release_dir / f"{top_name}.tar.gz"
     files = sorted((p for p in bundle_dir.rglob("*") if p.is_file()), key=lambda p: p.relative_to(bundle_dir).as_posix())
-
     with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
         for f in files:
             rel_posix = f.relative_to(bundle_dir).as_posix()
@@ -193,7 +235,13 @@ def _pack_zip_and_tar_gz(bundle_dir: Path, release_dir: Path) -> tuple[Path, Pat
             perm = 0o755 if f.suffix == ".sh" else 0o644
             zi.external_attr = (stat.S_IFREG | perm) << 16
             zf.writestr(zi, f.read_bytes())
+    return zip_path
 
+
+def _pack_tar_gz(bundle_dir: Path, release_dir: Path) -> Path:
+    top_name = bundle_dir.name
+    tar_path = release_dir / f"{top_name}.tar.gz"
+    files = sorted((p for p in bundle_dir.rglob("*") if p.is_file()), key=lambda p: p.relative_to(bundle_dir).as_posix())
     with tarfile.open(tar_path, "w:gz", format=tarfile.PAX_FORMAT) as tf:
         for f in files:
             rel_posix = f.relative_to(bundle_dir).as_posix()
@@ -205,8 +253,7 @@ def _pack_zip_and_tar_gz(bundle_dir: Path, release_dir: Path) -> tuple[Path, Pat
             ti.uname = "root"
             ti.gname = "root"
             tf.addfile(ti, io.BytesIO(data))
-
-    return zip_path, tar_path
+    return tar_path
 
 
 def build_release_archives(
@@ -219,24 +266,42 @@ def build_release_archives(
         shutil.rmtree(release_dir)
     release_dir.mkdir(parents=True, exist_ok=True)
 
-    full_dir = build_bundle(
+    win_full_dir = build_bundle(
         version=version,
         include_gpu=True,
+        platform="windows",
         key_file=key_file,
-        bundle_name=f"filament-vision-server-{version}",
+        bundle_name=f"filament-vision-server-{version}-windows",
     )
-    cpu_dir = build_bundle(
+    win_cpu_dir = build_bundle(
         version=version,
         include_gpu=False,
+        platform="windows",
         key_file=key_file,
-        bundle_name=f"filament-vision-server-{version}-cpu",
+        bundle_name=f"filament-vision-server-{version}-windows-cpu",
+    )
+    linux_full_dir = build_bundle(
+        version=version,
+        include_gpu=True,
+        platform="linux",
+        key_file=key_file,
+        bundle_name=f"filament-vision-server-{version}-linux",
+    )
+    linux_cpu_dir = build_bundle(
+        version=version,
+        include_gpu=False,
+        platform="linux",
+        key_file=key_file,
+        bundle_name=f"filament-vision-server-{version}-linux-cpu",
     )
 
-    full_zip, full_tar = _pack_zip_and_tar_gz(full_dir, release_dir)
-    cpu_zip, cpu_tar = _pack_zip_and_tar_gz(cpu_dir, release_dir)
+    win_full_zip = _pack_zip(win_full_dir, release_dir)
+    win_cpu_zip = _pack_zip(win_cpu_dir, release_dir)
+    linux_full_tar = _pack_tar_gz(linux_full_dir, release_dir)
+    linux_cpu_tar = _pack_tar_gz(linux_cpu_dir, release_dir)
 
     assets_info = {}
-    for p in (full_zip, full_tar, cpu_zip, cpu_tar):
+    for p in (win_full_zip, win_cpu_zip, linux_full_tar, linux_cpu_tar):
         assets_info[p.name] = {
             "bytes": p.stat().st_size,
             "mb": round(p.stat().st_size / (1024 * 1024), 2),
@@ -247,9 +312,17 @@ def build_release_archives(
         "version": version,
         "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "signed": key_file is not None,
-        "bundles": {
-            "full": [full_zip.name, full_tar.name],
-            "cpu": [cpu_zip.name, cpu_tar.name],
+        "platforms": {
+            "windows": {
+                "format": "zip",
+                "full": win_full_zip.name,
+                "cpu": win_cpu_zip.name,
+            },
+            "linux": {
+                "format": "tar.gz",
+                "full": linux_full_tar.name,
+                "cpu": linux_cpu_tar.name,
+            },
         },
         "assets": assets_info,
     }
@@ -267,8 +340,13 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Build standalone filament-vision-server bundles and releases")
     parser.add_argument("--version", default=DEFAULT_VERSION)
     parser.add_argument("--output-dir", default=None)
+    parser.add_argument("--platform", choices=["all", "windows", "linux"], default="all")
     parser.add_argument("--no-gpu", action="store_true", help="Exclude GPU LoRA weights from single bundle")
-    parser.add_argument("--build-release", action="store_true", help="Build both full and CPU-only zip/tar.gz archives under release/v<version>/")
+    parser.add_argument(
+        "--build-release",
+        action="store_true",
+        help="Build platform-specific zip (Windows) and tar.gz (Linux) archives under release/v<version>/",
+    )
     parser.add_argument("--key-file", default=None, help="Path to Ed25519 private key PEM for signing SHA256SUMS")
     args = parser.parse_args(argv)
 
@@ -285,6 +363,7 @@ def main(argv: list[str] | None = None) -> int:
         version=args.version,
         output_dir=args.output_dir,
         include_gpu=not args.no_gpu,
+        platform=args.platform,
         key_file=args.key_file,
     )
     print(f"Built standalone bundle: {bundle_dir}")

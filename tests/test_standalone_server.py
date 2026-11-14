@@ -241,3 +241,12 @@ def test_wsl_harness_script_present():
     text = raw.decode("utf-8")
     for token in ("--no-systemd", "--non-interactive", "/v1/health", "/v1/read", "/v1/revise", "--uninstall"):
         assert token in text
+
+
+def test_platform_specific_bundle_builder():
+    root = Path(__file__).resolve().parent.parent
+    builder = root / "tools" / "build_standalone_bundle.py"
+    assert builder.is_file()
+    text = builder.read_text(encoding="utf-8")
+    for token in ("_pack_zip", "_pack_tar_gz", '"windows"', '"linux"', "--platform", "--build-release"):
+        assert token in text
