@@ -56,9 +56,14 @@ def standalone_server(tmp_path, monkeypatch):
         server.server_close()
 
 
-def _http_request(url: str, method: str = "GET", payload: dict | None = None) -> tuple[int, dict[str, str], bytes]:
+def _http_request(
+    url: str,
+    method: str = "GET",
+    payload: dict | None = None,
+    extra_headers: dict[str, str] | None = None,
+) -> tuple[int, dict[str, str], bytes]:
     data = None
-    headers = {}
+    headers = dict(extra_headers or {})
     if payload is not None:
         data = json.dumps(payload).encode("utf-8")
         headers["Content-Type"] = "application/json; charset=utf-8"
@@ -66,6 +71,19 @@ def _http_request(url: str, method: str = "GET", payload: dict | None = None) ->
     with urllib.request.urlopen(req, timeout=30.0) as resp:
         hdrs = {k.lower(): v for k, v in resp.headers.items()}
         return resp.status, hdrs, resp.read()
+
+
+def _http_request_any(
+    url: str,
+    method: str = "GET",
+    payload: dict | None = None,
+    extra_headers: dict[str, str] | None = None,
+) -> tuple[int, dict[str, str], bytes]:
+    try:
+        return _http_request(url, method=method, payload=payload, extra_headers=extra_headers)
+    except urllib.error.HTTPError as exc:
+        hdrs = {k.lower(): v for k, v in exc.headers.items()}
+        return exc.code, hdrs, exc.read()
 
 
 def test_web_ui_served_on_root_and_ui(standalone_server):
@@ -79,22 +97,28 @@ def test_web_ui_served_on_root_and_ui(standalone_server):
         assert "cameraInput" in html
         assert "Export JSON" in html
         assert "Export Spoolman" in html
+        assert "sessionStorage" in html
 
 
 def test_health_and_cors_preflight(standalone_server):
     base_url, _, _ = standalone_server
     status, hdrs, raw = _http_request(f"{base_url}/v1/health")
     assert status == 200
-    assert hdrs.get("access-control-allow-origin") == "*"
+    assert "access-control-allow-origin" not in hdrs
     payload = json.loads(raw.decode("utf-8"))
     assert payload["service"] == "filament-vision-server"
-    assert payload["module_version"] == "0.2.1"
+    assert payload["module_version"] == "0.2.2"
     assert payload["status"] == "ok"
     assert payload["tiers"]["cpu"]["usable"] is True
 
-    opt_status, opt_hdrs, _ = _http_request(f"{base_url}/v1/read", method="OPTIONS")
+    opt_status, opt_hdrs, _ = _http_request(
+        f"{base_url}/v1/read",
+        method="OPTIONS",
+        extra_headers={"Origin": "http://localhost:3000"},
+    )
     assert opt_status == 204
-    assert opt_hdrs.get("access-control-allow-origin") == "*"
+    assert opt_hdrs.get("access-control-allow-origin") == "http://localhost:3000"
+    assert opt_hdrs.get("vary") == "Origin"
     assert "POST" in opt_hdrs.get("access-control-allow-methods", "")
 
 
@@ -117,7 +141,7 @@ def test_read_and_revise_cpu_tier(standalone_server):
     assert isinstance(data.get("items"), list) and len(data["items"]) >= 1
     first = data["items"][0]
     assert "vendor" in first and "material" in first and "diameter" in first
-    assert data["reader"]["module_version"] == "0.2.1"
+    assert data["reader"]["module_version"] == "0.2.2"
 
     rev_status, _, rev_raw = _http_request(
         f"{base_url}/v1/revise",
@@ -341,3 +365,310 @@ def test_feedback_multi_batch_splitting(standalone_server, monkeypatch):
     finally:
         mock_srv.shutdown()
         mock_srv.server_close()
+
+
+def test_cors_origin_protection(standalone_server, monkeypatch):
+    base_url, _, _ = standalone_server
+
+    # Untrusted Origin must be rejected on OPTIONS, POST, DELETE
+    st_opt, _, raw_opt = _http_request_any(
+        f"{base_url}/v1/read",
+        method="OPTIONS",
+        extra_headers={"Origin": "https://evil.example"},
+    )
+    assert st_opt == 403
+    assert json.loads(raw_opt.decode("utf-8"))["code"] == "forbidden_origin"
+
+    st_post, _, raw_post = _http_request_any(
+        f"{base_url}/v1/config",
+        method="POST",
+        payload={"api_version": "1.0", "tier": "cpu"},
+        extra_headers={"Origin": "https://evil.example"},
+    )
+    assert st_post == 403
+    assert json.loads(raw_post.decode("utf-8"))["code"] == "forbidden_origin"
+
+    st_del, _, raw_del = _http_request_any(
+        f"{base_url}/v1/feedback/nonexistent",
+        method="DELETE",
+        extra_headers={"Origin": "null"},
+    )
+    assert st_del == 403
+    assert json.loads(raw_del.decode("utf-8"))["code"] == "forbidden_origin"
+
+    # Explicit FILAMENT_VISION_SERVER_ALLOWED_ORIGINS opt-in works
+    monkeypatch.setenv("FILAMENT_VISION_SERVER_ALLOWED_ORIGINS", "https://spoolman.lan:7912")
+    st_ok, hdr_ok, _ = _http_request_any(
+        f"{base_url}/v1/read",
+        method="OPTIONS",
+        extra_headers={"Origin": "https://spoolman.lan:7912"},
+    )
+    assert st_ok == 204
+    assert hdr_ok.get("access-control-allow-origin") == "https://spoolman.lan:7912"
+
+
+def test_bearer_token_auth_and_endpoint_gate(tmp_path, monkeypatch):
+    cfg_path = tmp_path / "service_config.xml"
+    fb_dir = tmp_path / "feedback_queue"
+    monkeypatch.setattr(daemon_mod, "DEFAULT_SERVICE_CONFIG_XML", cfg_path)
+
+    server = daemon_mod.start_daemon(
+        host="127.0.0.1",
+        port=0,
+        tier="cpu",
+        auth_token="super-secret-token",
+        feedback_opt_in=True,
+        feedback_dir=fb_dir,
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    host, port = server.server_address[:2]
+    base_url = f"http://{host}:{port}"
+    try:
+        # Health stays unauthenticated
+        st_h, _, raw_h = _http_request_any(f"{base_url}/v1/health")
+        assert st_h == 200
+        assert json.loads(raw_h.decode("utf-8"))["auth_required"] is True
+
+        # Protected routes fail 401 without or with wrong bearer token
+        st_cfg, _, _ = _http_request_any(f"{base_url}/v1/config")
+        assert st_cfg == 401
+        st_bad, _, _ = _http_request_any(
+            f"{base_url}/v1/config",
+            extra_headers={"Authorization": "Bearer wrong-token"},
+        )
+        assert st_bad == 401
+
+        st_ok, _, raw_ok = _http_request_any(
+            f"{base_url}/v1/config",
+            extra_headers={"Authorization": "Bearer super-secret-token"},
+        )
+        assert st_ok == 200
+        assert json.loads(raw_ok.decode("utf-8"))["tier"] == "cpu"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_unauthenticated_custom_feedback_endpoint_blocked(standalone_server):
+    base_url, _, _ = standalone_server
+    _http_request(
+        f"{base_url}/v1/config",
+        method="POST",
+        payload={"api_version": "1.0", "feedback_opt_in": True},
+    )
+    st, _, raw = _http_request_any(
+        f"{base_url}/v1/feedback/submit",
+        method="POST",
+        payload={"api_version": "1.0", "endpoint": "https://attacker.example/exfil"},
+    )
+    assert st == 403
+    assert json.loads(raw.decode("utf-8"))["code"] == "forbidden_endpoint"
+
+
+def test_read_data_uri_bad_image_and_bad_content_length(standalone_server):
+    import http.client
+    from urllib.parse import urlparse
+
+    base_url, _, _ = standalone_server
+    jpg_b64 = base64.b64encode(_make_sample_spool_jpeg()).decode("ascii")
+
+    # data-URI prefix must decode cleanly
+    st_ok, _, _ = _http_request_any(
+        f"{base_url}/v1/read",
+        method="POST",
+        payload={
+            "api_version": "1.0",
+            "tier": "cpu",
+            "images_b64": [f"data:image/jpeg;base64,{jpg_b64}"],
+        },
+    )
+    assert st_ok == 200
+
+    # Strict base64 validation returns 415 bad_image
+    st_b64, _, raw_b64 = _http_request_any(
+        f"{base_url}/v1/read",
+        method="POST",
+        payload={"api_version": "1.0", "tier": "cpu", "images_b64": ["!!!not-base64!!!"]},
+    )
+    assert st_b64 == 415
+    assert json.loads(raw_b64.decode("utf-8"))["code"] == "bad_image"
+
+    # Non-image bytes return 415 bad_image
+    not_img = base64.b64encode(b"definitely not a real image file").decode("ascii")
+    st_corrupt, _, raw_corrupt = _http_request_any(
+        f"{base_url}/v1/read",
+        method="POST",
+        payload={"api_version": "1.0", "tier": "cpu", "images_b64": [not_img]},
+    )
+    assert st_corrupt == 415
+    assert json.loads(raw_corrupt.decode("utf-8"))["code"] == "bad_image"
+
+    # Invalid / negative Content-Length returns 400 instead of 500 ValueError
+    parsed = urlparse(base_url)
+    conn = http.client.HTTPConnection(parsed.hostname, parsed.port, timeout=10)
+    try:
+        conn.putrequest("POST", "/v1/read")
+        conn.putheader("Content-Type", "application/json")
+        conn.putheader("Content-Length", "not-a-number")
+        conn.endheaders()
+        resp = conn.getresponse()
+        assert resp.status == 400
+    finally:
+        conn.close()
+
+
+def test_revise_null_fields_pla_plus_color_and_spoolman(standalone_server):
+    base_url, _, _ = standalone_server
+
+    # None numeric fields + vendor switch + PLA+ + note color + Spoolman matching
+    st1, _, raw1 = _http_request_any(
+        f"{base_url}/v1/revise",
+        method="POST",
+        payload={
+            "api_version": "1.0",
+            "previous": {
+                "vendor": "Bambu Lab",
+                "material": "PLA",
+                "line": "PLA Basic",
+                "color_name": "Jade White",
+                "net": None,
+                "tare": None,
+                "density": None,
+                "count": None,
+                "nozzle_range": "190-220",
+            },
+            "note": "SUNLU PLA+ Red",
+            "filaments": [
+                {
+                    "id": 77,
+                    "name": "PLA+ Red",
+                    "vendor": {"name": "SUNLU"},
+                    "spool_weight": 185,
+                    "density": 1.25,
+                    "color_hex": "#EE1122",
+                }
+            ],
+        },
+    )
+    assert st1 == 200
+    item1 = json.loads(raw1.decode("utf-8"))["item"]
+    assert item1["vendor"] == "SUNLU"
+    assert "PLA+" in item1["line"]
+    assert item1["color_name"] == "Red"
+    assert item1["existing_filament_id"] == 77
+    assert item1["tare"] == 185
+
+    # Bambu Lab PLA Basic Bambu Green matches catalog product color & hex
+    st2, _, raw2 = _http_request_any(
+        f"{base_url}/v1/revise",
+        method="POST",
+        payload={
+            "api_version": "1.0",
+            "previous": {"vendor": "Unknown", "material": "PLA", "line": "PLA"},
+            "note": "Bambu Lab PLA Basic Bambu Green",
+        },
+    )
+    assert st2 == 200
+    item2 = json.loads(raw2.decode("utf-8"))["item"]
+    assert item2["vendor"] == "Bambu Lab"
+    assert item2["line"] == "PLA Basic"
+    assert item2["color_name"] == "Bambu Green"
+    assert item2["color_hex"] == "00AE42"
+
+
+def test_feedback_fail_closed_delete_many_and_ingest_empty_xml(tmp_path):
+    import http.server
+    import xml.etree.ElementTree as ET
+
+    fb_dir = tmp_path / "fb"
+    q = feedback_mod.FeedbackQueue(queue_dir=fb_dir)
+    jpg_b64 = base64.b64encode(_make_sample_spool_jpeg()).decode("ascii")
+
+    e1 = q.enqueue([jpg_b64], {"vendor": "Unknown"}, {"vendor": "Hatchbox", "material": "PLA"})
+    q.enqueue([jpg_b64], {"vendor": "Unknown"}, {"vendor": "Prusament", "material": "PETG"})
+    assert q.status()["count"] == 2
+
+    # delete_many removes only specified entries
+    assert q.delete_many([e1["id"]]) == 1
+    assert q.status()["count"] == 1
+
+    # Mock fail-closed endpoints (HTML 200 response + ok:false response)
+    mode = {"html": True}
+
+    class BadUploadHandler(http.server.BaseHTTPRequestHandler):
+        def do_POST(self):
+            length = int(self.headers.get("Content-Length") or "0")
+            self.rfile.read(length)
+            if mode["html"]:
+                body = b"<html><body>Sign in</body></html>"
+                ctype = "text/html"
+            else:
+                body = json.dumps({"ok": False, "error": "drive_quota_exceeded"}).encode("utf-8")
+                ctype = "application/json"
+            self.send_response(200)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format, *args):
+            pass
+
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), BadUploadHandler)
+    t = threading.Thread(target=srv.serve_forever, daemon=True)
+    t.start()
+    try:
+        h, p = srv.server_address[:2]
+        with pytest.raises(RuntimeError, match="non-JSON"):
+            q.submit(f"http://{h}:{p}/exec")
+        assert q.status()["count"] == 1
+
+        mode["html"] = False
+        with pytest.raises(RuntimeError, match="drive_quota_exceeded"):
+            q.submit(f"http://{h}:{p}/exec")
+        assert q.status()["count"] == 1
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+    # Craft a ZIP bundle with empty <net></net> XML elements and ingest cleanly
+    bundle_bytes = q.build_bundle_zip()
+    patched_zip = tmp_path / "patched_feedback.zip"
+    with zipfile.ZipFile(io.BytesIO(bundle_bytes), "r") as zin:
+        xml_root = ET.fromstring(zin.read("pending_feedback.xml"))
+        corr = xml_root.find("./entry/corrected")
+        for empty_tag in ("net", "tare", "density", "nozzle"):
+            el = corr.find(empty_tag)
+            if el is None:
+                el = ET.SubElement(corr, empty_tag)
+            el.text = ""
+        with zipfile.ZipFile(patched_zip, "w", compression=zipfile.ZIP_DEFLATED) as zout:
+            for item in zin.infolist():
+                if item.filename == "pending_feedback.xml":
+                    zout.writestr("pending_feedback.xml", ET.tostring(xml_root, encoding="utf-8"))
+                else:
+                    zout.writestr(item.filename, zin.read(item.filename))
+
+    dest_xml = tmp_path / "data" / "annotations" / "verified.xml"
+    dest_imgs = tmp_path / "data" / "feedback_verified"
+    ingested = feedback_mod.ingest_feedback_bundles(patched_zip, dest_xml=dest_xml, dest_images_dir=dest_imgs)
+    assert ingested["imported_entries"] == 1
+    assert ingested["imported_images"] == 1
+    assert "feedback_verified/" in dest_xml.read_text(encoding="utf-8")
+
+
+def test_catalog_matcher_unknown_color_keeps_visual_hex():
+    from filament_vision_server.catalog.matcher import CatalogMatcher
+
+    matcher = CatalogMatcher()
+    cname, chex, cfam, hsrc = matcher.resolve_color(
+        "Weird Custom Tint",
+        product=None,
+        visual_hex="12AB34",
+        visual_family="Green",
+    )
+    assert cname == "Weird Custom Tint"
+    assert chex == "12AB34"
+    assert cfam == "Green"
+    assert hsrc == "estimate"

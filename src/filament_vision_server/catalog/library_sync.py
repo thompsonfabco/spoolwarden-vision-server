@@ -211,7 +211,7 @@ OFFICIAL_COLOR_HEX_DB: dict[str, tuple[str, str]] = {
     "Candy": ("E94E77", "Multi-color/Rainbow"),
     "Ocean to Meadow": ("1B8A6B", "Multi-color/Rainbow"),
     "Solar Breeze": ("F39C12", "Multi-color/Rainbow"),
-    " Dusk to Dawn": ("6C3483", "Multi-color/Rainbow"),
+    "Dusk to Dawn": ("6C3483", "Multi-color/Rainbow"),
     "Red Gold": ("C84B31", "Multi-color/Rainbow"),
     "Blue Green": ("118AB2", "Multi-color/Rainbow"),
     "Gold Silver Copper": ("C5A03F", "Multi-color/Rainbow"),
@@ -241,7 +241,7 @@ BRAND_LINE_COLORS: dict[tuple[str, str], list[str]] = {
     ("Bambu Lab", "PLA Sparkle"): ["Classic Gold Sparkle", "Slate Gray Sparkle", "Crimson Red Sparkle", "Onyx Black Sparkle", "Alpine Green Sparkle", "Royal Purple Sparkle"],
     ("Bambu Lab", "PLA Galaxy"): ["Purple", "Brown", "Green", "Nebula"],
     ("Bambu Lab", "PLA Glow"): ["Glow Green", "Glow Blue", "Glow Orange", "Glow Pink", "Glow Yellow"],
-    ("Bambu Lab", "PLA Translucent"): ["Teal", "LightJade", "Blue", "Orange", "Purple", "Red", "Yellow", "Ice Blue", "Cherry Pink", "Mellow Yellow"],
+    ("Bambu Lab", "PLA Translucent"): ["Teal", "Light Jade", "Blue", "Orange", "Purple", "Red", "Yellow", "Ice Blue", "Cherry Pink", "Mellow Yellow"],
     ("Bambu Lab", "PETG Basic"): ["Black", "White", "Gray", "Blue Gray", "Red", "Orange", "Yellow", "Green", "Blue", "Violet", "Natural", "Gold"],
     ("Bambu Lab", "PETG HF"): ["Black", "White", "Gray", "Dark Gray", "Red", "Orange", "Yellow", "Green", "Lake Blue", "Blue", "Cream", "Peanut Brown"],
     ("Bambu Lab", "PETG Translucent"): ["Translucent", "Translucent Blue", "Translucent Green", "Translucent Orange", "Translucent Purple", "Translucent Pink", "Translucent Gray", "Translucent Olive", "Translucent Teal"],
@@ -313,6 +313,26 @@ def default_colors_for_line(product: str, material: str) -> list[str]:
         "Black", "White", "Gray", "Silver", "Red", "Orange", "Yellow",
         "Green", "Olive Green", "Blue", "Cyan", "Purple", "Pink", "Brown", "Beige", "Gold",
     ]
+
+
+def has_known_color_match(color_name: str, taxonomy_root: StdET.Element | None = None) -> bool:
+    """Return True if color_name resolves via OFFICIAL_COLOR_HEX_DB or taxonomy color keywords."""
+    clean = color_name.strip()
+    if not clean:
+        return False
+    if clean in OFFICIAL_COLOR_HEX_DB:
+        return True
+    low = clean.lower()
+    for k in OFFICIAL_COLOR_HEX_DB:
+        if k.lower() == low or k.lower() in low:
+            return True
+    if taxonomy_root is not None:
+        for fam_el in taxonomy_root.findall("./color-families/family"):
+            for kw_el in fam_el.findall("keyword"):
+                kw = (kw_el.text or "").strip().lower()
+                if kw and kw in low:
+                    return True
+    return False
 
 
 def infer_color_hex_and_family(color_name: str, taxonomy_root: StdET.Element | None = None) -> tuple[str, str]:

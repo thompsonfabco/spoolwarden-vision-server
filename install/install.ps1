@@ -72,12 +72,29 @@ if ($Uninstall) {
     if (Test-Path $venvDir) {
         Remove-Item $venvDir -Recurse -Force -ErrorAction SilentlyContinue
     }
-    $marker = Join-Path $TargetPrefix ".installed"
-    if (Test-Path $marker) {
-        Remove-Item $marker -Force -ErrorAction SilentlyContinue
+    foreach ($relFile in @(".installed", "server.pid", "start_server.bat", "stop_server.bat")) {
+        $fp = Join-Path $TargetPrefix $relFile
+        if (Test-Path $fp) {
+            Remove-Item $fp -Force -ErrorAction SilentlyContinue
+        }
     }
     if ($TargetPrefix.TrimEnd('\') -ne $ProjectRoot.TrimEnd('\') -and (Test-Path $TargetPrefix)) {
-        Remove-Item $TargetPrefix -Recurse -Force -ErrorAction SilentlyContinue
+        # Remove staged assets while preserving user data\feedback_queue
+        foreach ($relDir in @("configs", "models", "data\catalog", "data\logs")) {
+            $dp = Join-Path $TargetPrefix $relDir
+            if (Test-Path $dp) {
+                Remove-Item $dp -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+        $dataDir = Join-Path $TargetPrefix "data"
+        if ((Test-Path $dataDir) -and -not (Get-ChildItem -Path $dataDir -Force | Select-Object -First 1)) {
+            Remove-Item $dataDir -Force -ErrorAction SilentlyContinue
+        }
+        if (-not (Get-ChildItem -Path $TargetPrefix -Force | Select-Object -First 1)) {
+            Remove-Item $TargetPrefix -Force -ErrorAction SilentlyContinue
+        } else {
+            Write-Host "[install.ps1] Preserved remaining user data under $TargetPrefix (e.g. feedback_queue)."
+        }
     }
     Write-Host "[install.ps1] Uninstalled cleanly."
     exit 0
@@ -156,11 +173,17 @@ function Ensure-VcRedist {
 
         $vcExe = Join-Path $env:TEMP "vc_redist.x64.exe"
         try {
+            if ($vcUrl -notmatch '^https://') {
+                throw "Refusing non-HTTPS VC++ download URL: $vcUrl"
+            }
             [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
             Write-Host "[install.ps1] Downloading $vcUrl..."
             Invoke-WebRequest -Uri $vcUrl -OutFile $vcExe -UseBasicParsing
             Write-Host "[install.ps1] Running $vcExe..."
-            Start-Process -FilePath $vcExe -ArgumentList "/install", "/passive", "/norestart" -Wait
+            $vcProc = Start-Process -FilePath $vcExe -ArgumentList "/install", "/passive", "/norestart" -Wait -PassThru
+            if ($vcProc.ExitCode -ne 0 -and $vcProc.ExitCode -ne 3010 -and $vcProc.ExitCode -ne 1638) {
+                Write-Warning "vc_redist.x64.exe exited with code $($vcProc.ExitCode)."
+            }
         } catch {
             Write-Warning "Automatic VC++ Redistributable download/install failed: $_"
         } finally {
@@ -390,11 +413,15 @@ function Ensure-ModelAssets {
         }
 
         if ($env:FILAMENT_VISION_SERVER_ASSETS_URL) {
+            $assetsUrl = $env:FILAMENT_VISION_SERVER_ASSETS_URL.Trim()
+            if ($assetsUrl -notmatch '^https://' -and $assetsUrl -notmatch '^http://(127\.0\.0\.1|localhost)(:\d+)?/') {
+                throw "Refusing insecure non-HTTPS FILAMENT_VISION_SERVER_ASSETS_URL: $assetsUrl"
+            }
             $zipTmp = Join-Path $env:TEMP "filament_vision_models.zip"
             try {
                 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-                Write-Host "[install.ps1] Downloading model assets from $($env:FILAMENT_VISION_SERVER_ASSETS_URL)..."
-                Invoke-WebRequest -Uri $env:FILAMENT_VISION_SERVER_ASSETS_URL -OutFile $zipTmp -UseBasicParsing
+                Write-Host "[install.ps1] Downloading model assets from ${assetsUrl}..."
+                Invoke-WebRequest -Uri $assetsUrl -OutFile $zipTmp -UseBasicParsing
                 New-Item -ItemType Directory -Path $DefaultModelsDir -Force | Out-Null
                 Expand-Archive -Path $zipTmp -DestinationPath $DefaultModelsDir -Force
                 $nested = Join-Path $DefaultModelsDir "models"
@@ -415,11 +442,11 @@ function Ensure-ModelAssets {
 
         Write-Host ""
         Write-Host "[install.ps1] Model weights not found under: $DefaultModelsDir" -ForegroundColor Yellow
-        $ans = Read-Host "Enter a local models folder path or .zip download URL (or type 'Q' to quit)"
+        $ans = Read-Host "Enter a local models folder path or HTTPS .zip download URL (or type 'Q' to quit)"
         if ([string]::IsNullOrWhiteSpace($ans) -or $ans -match '^[Qq]$') {
             exit 1
         }
-        if ($ans -match '^https?://') {
+        if ($ans -match '^https://' -or $ans -match '^http://(127\.0\.0\.1|localhost)(:\d+)?/') {
             $zipTmp = Join-Path $env:TEMP "filament_vision_models.zip"
             try {
                 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -435,6 +462,8 @@ function Ensure-ModelAssets {
             } finally {
                 Remove-Item $zipTmp -Force -ErrorAction SilentlyContinue
             }
+        } elseif ($ans -match '^http://') {
+            Write-Warning "Plain HTTP download URLs are rejected for remote assets. Use HTTPS or a local folder path."
         } elseif ((Test-Path $ans) -and (Test-ModelsPresent -ModelsRoot $ans)) {
             return (Resolve-Path $ans).Path
         } else {
@@ -471,6 +500,12 @@ if ($TargetPrefix.TrimEnd('\') -ne $ProjectRoot.TrimEnd('\')) {
         if (Test-Path $srcPath) {
             New-Item -ItemType Directory -Path $dstPath -Force | Out-Null
             Copy-Item -Path (Join-Path $srcPath "*") -Destination $dstPath -Recurse -Force
+        }
+    }
+    foreach ($batFile in @("start_server.bat", "stop_server.bat")) {
+        $srcBat = Join-Path $ProjectRoot $batFile
+        if (Test-Path $srcBat) {
+            Copy-Item -Path $srcBat -Destination (Join-Path $TargetPrefix $batFile) -Force
         }
     }
     $dstModels = Join-Path $TargetPrefix "models"
@@ -516,8 +551,8 @@ if ($isInPlace) {
 }
 if ($LASTEXITCODE -ne 0) { throw "pip install failed." }
 
-if (-not $useGpuExtras -and $CudaReady -and $Tier -eq "auto") {
-    Write-Host "[install.ps1] CUDA GPU detected; attempting optional onnxruntime-gpu upgrade..."
+if ($useGpuExtras -and $CudaReady) {
+    Write-Host "[install.ps1] CUDA GPU extras enabled; attempting optional onnxruntime-gpu upgrade..."
     & $venvPip install --no-cache-dir --upgrade onnxruntime-gpu 2>$null
 }
 
@@ -544,6 +579,7 @@ if want_gpu:
         ('transformers', 'transformers'),
         ('peft', 'peft'),
         ('accelerate', 'accelerate'),
+        ('bitsandbytes', 'bitsandbytes'),
         ('qwen_vl_utils', 'qwen-vl-utils'),
     ])
 missing = []
@@ -588,7 +624,7 @@ $env:FILAMENT_VISION_SERVER_HOME = $TargetPrefix
 & $venvPy -m filament_vision_server.service.cli config --tier $Tier --host $Bind --port $Port | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "Failed to write service_config.xml." }
 
-Set-Content -Path (Join-Path $TargetPrefix ".installed") -Value "0.2.1" -Encoding ASCII
+Set-Content -Path (Join-Path $TargetPrefix ".installed") -Value "0.2.2" -Encoding ASCII
 
 if ($RegisterStartup) {
     try {

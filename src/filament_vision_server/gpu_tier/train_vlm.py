@@ -56,10 +56,18 @@ def train_gpu_vlm_lora(
     curated_train = real_samples + syn_samples[:160]
     random.shuffle(curated_train)
 
+    from .pipeline import verify_pinned_base_model
+
+    verified_src = (
+        str(verify_pinned_base_model())
+        if base_model_id == "Qwen/Qwen2.5-VL-7B-Instruct"
+        else base_model_id
+    )
+
     device = torch.device("cuda:0")
     print(f"[GPU-VLM] Loading {base_model_id} ({'4-bit NF4' if use_4bit else 'bfloat16'}) on {torch.cuda.get_device_name(0)}...")
     processor = AutoProcessor.from_pretrained(
-        base_model_id,
+        verified_src,
         min_pixels=256 * 28 * 28,
         max_pixels=640 * 28 * 28,
     )
@@ -74,7 +82,7 @@ def train_gpu_vlm_lora(
         else None
     )
     model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-        base_model_id,
+        verified_src,
         torch_dtype=torch.bfloat16,
         quantization_config=quant_cfg,
         device_map="cuda:0",

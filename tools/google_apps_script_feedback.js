@@ -1,5 +1,5 @@
 /**
- * Write-only Google Apps Script Web App for filament-kit-vision user feedback bundles.
+ * Write-only Google Apps Script Web App for filament-vision-server user feedback bundles.
  *
  * Setup:
  *   1. Create a private folder in Google Drive (shared with NOBODY). Copy its folder ID from the URL.
@@ -8,7 +8,7 @@
  *   4. Deploy -> New deployment -> Web app:
  *      - Execute as: Me
  *      - Who has access: Anyone
- *   5. Configure the deployed /exec URL in service_config.xml (feedback-endpoint) or FILAMENT_KIT_VISION_FEEDBACK_ENDPOINT.
+ *   5. Configure the deployed /exec URL in service_config.xml (feedback-endpoint) or FILAMENT_VISION_SERVER_FEEDBACK_ENDPOINT.
  *
  * Security:
  *   - Only doPost(e) is exposed; there is no doGet() listing or reading files.

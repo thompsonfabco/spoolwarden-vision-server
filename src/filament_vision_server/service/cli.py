@@ -11,6 +11,7 @@ from ..evaluation.benchmark import run_benchmark
 from .daemon import (
     DEFAULT_HOST,
     DEFAULT_PORT,
+    DEFAULT_SERVICE_CONFIG_XML,
     FilamentRecognizer,
     LocalIntakeClient,
     load_service_config,
@@ -41,7 +42,7 @@ def main(argv: list[str] | None = None) -> int:
     p_pred.add_argument("--format", choices=["xml", "filament-kit"], default="xml")
 
     # config
-    p_cfg = sub.add_parser("config", help="View or update local_intake service configuration (XML)")
+    p_cfg = sub.add_parser("config", help="View or update filament-vision-server service configuration (XML)")
     p_cfg.add_argument("--tier", choices=["auto", "cpu", "gpu"], default=None)
     p_cfg.add_argument("--host", default=None)
     p_cfg.add_argument("--port", type=int, default=None)
@@ -78,7 +79,7 @@ def main(argv: list[str] | None = None) -> int:
         "update-models",
         help="One-click update: ingest Drive feedback zips, check batch threshold, retrain, and benchmark",
     )
-    p_upd.add_argument("--source", action="append", default=None, help="Folder(s) or .zip(s) to ingest (default: data/feedback_incoming + Downloads)")
+    p_upd.add_argument("--source", action="append", default=None, help="Folder(s) or .zip(s) to ingest (default: data/feedback_incoming)")
     p_upd.add_argument("--min-new-samples", type=int, default=10, help="Minimum new feedback samples before retraining (default: 10)")
     p_upd.add_argument("--force", action="store_true", help="Retrain even if below --min-new-samples")
     p_upd.add_argument("--tier", choices=["cpu", "gpu", "all"], default="all")
@@ -133,15 +134,20 @@ def main(argv: list[str] | None = None) -> int:
         if args.feedback_endpoint is not None:
             cfg["feedback_endpoint"] = args.feedback_endpoint.strip()
             changed = True
-        out_path = save_service_config(cfg)
-        print(f"{'Updated' if changed else 'Current'} config ({out_path}): {cfg}")
+        out_path = save_service_config(cfg) if changed else DEFAULT_SERVICE_CONFIG_XML
+        safe_cfg = {**cfg, "token": ("***" if cfg.get("token") else "")}
+        print(f"{'Updated' if changed else 'Current'} config ({out_path}): {safe_cfg}")
         return 0
 
     if args.cmd == "status":
-        client = LocalIntakeClient(base_url=f"http://{cfg['host']}:{cfg['port']}")
+        probe_host = "127.0.0.1" if cfg["host"] in ("0.0.0.0", "::", "") else cfg["host"]
+        client = LocalIntakeClient(
+            base_url=f"http://{probe_host}:{cfg['port']}",
+            token=str(cfg.get("token", "")),
+        )
         try:
             h = client.health()
-            print(f"Daemon: RUNNING at http://{cfg['host']}:{cfg['port']} -> {h}")
+            print(f"Daemon: RUNNING at http://{probe_host}:{cfg['port']} -> {h}")
         except Exception:
             rec = FilamentRecognizer(default_tier=cfg["tier"])
             print(

@@ -558,9 +558,10 @@ document.getElementById("fileInput").addEventListener("change", (e) => handleFil
 document.getElementById("cameraInput").addEventListener("change", (e) => handleFiles(e.target.files));
 
 const tokEl = document.getElementById("authToken");
-tokEl.value = localStorage.getItem("fvs_auth_token") || "";
+try { localStorage.removeItem("fvs_auth_token"); } catch (_) {}
+tokEl.value = sessionStorage.getItem("fvs_auth_token") || "";
 tokEl.addEventListener("change", () => {
-  localStorage.setItem("fvs_auth_token", tokEl.value.trim());
+  sessionStorage.setItem("fvs_auth_token", tokEl.value.trim());
   refreshHealthAndFeedback();
 });
 

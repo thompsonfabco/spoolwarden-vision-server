@@ -9,8 +9,10 @@ if not exist "%VENV_PY%" (
     exit /b %ERRORLEVEL%
 )
 
+set "FVS_BAT_ROOT=%ROOT%"
+set "FVS_BAT_ARGS=%*"
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "$root = '%ROOT%'.TrimEnd('\'); " ^
+  "$root = $env:FVS_BAT_ROOT.TrimEnd('\'); " ^
   "$venvPy = Join-Path $root '.venv\Scripts\python.exe'; " ^
   "$cfgXml = Join-Path $root 'configs\service_config.xml'; " ^
   "$bind = '127.0.0.1'; $port = 7920; $tier = 'auto'; " ^
@@ -26,7 +28,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "  Set-Content -Path (Join-Path $root 'server.pid') -Value \"$($p.Id)\" -Encoding ASCII; " ^
   "  for ($i = 0; $i -lt 30; $i++) { Start-Sleep -Seconds 1; try { $r = Invoke-RestMethod -Uri ($url + '/v1/health') -TimeoutSec 2; if ($r.status) { $alreadyUp = $true; break } } catch {} }; " ^
   "}; " ^
-  "if ($alreadyUp) { Write-Host ('[filament-vision-server] Listening at ' + $url + '/'); if ('%*'.IndexOf('--no-browser') -lt 0) { Start-Process ($url + '/') } } else { Write-Error ('Server failed to respond at ' + $url + '/v1/health'); exit 1 }"
+  "$rawArgs = if ($env:FVS_BAT_ARGS) { $env:FVS_BAT_ARGS } else { '' }; " ^
+  "if ($alreadyUp) { Write-Host ('[filament-vision-server] Listening at ' + $url + '/'); if ($rawArgs -notmatch '(^|\s)--no-browser(\s|$)') { Start-Process ($url + '/') } } else { Write-Error ('Server failed to respond at ' + $url + '/v1/health'); exit 1 }"
 if errorlevel 1 (
     pause
     exit /b 1

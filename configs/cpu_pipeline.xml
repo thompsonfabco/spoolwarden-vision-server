@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  CPU Hybrid Pipeline configuration for filament-kit-vision.
+  CPU Hybrid Pipeline configuration for filament-vision-server.
   All models export to cross-platform ONNX for <150ms CPU inference.
 -->
 <cpu-pipeline version="1">
-  <detector model-type="rf-detr-n" input-size="384" conf-threshold="0.30" iou-threshold="0.45"
+  <detector model-type="rf-detr-n" input-size="384" conf-threshold="0.35" iou-threshold="0.45"
             onnx-path="models/cpu/detector_rfdetr_n.onnx">
     <classes>
       <class id="0" name="box_label"/>
@@ -29,7 +29,7 @@
     <training epochs="35" batch-size="32" lr="0.001" weight-decay="0.0001" device="cuda:0"/>
   </visual-classifier>
 
-  <text-parser model-path="models/cpu/text_parser.joblib"
+  <text-parser model-path="models/cpu/text_parser.npz"
                fuzzy-threshold="78.0"
                catalog-weight="0.65"
                classifier-weight="0.35"/>

@@ -8,7 +8,12 @@ from ..xml_io import DATA_DIR, PROJECT_ROOT, load_dataset_xml, save_dataset_xml
 
 def launch_review_ui(xml_path: str | Path = DATA_DIR / "annotations" / "seed_labels.xml", port: int = 7860) -> None:
     """Launch a Gradio dataset inspection & active-learning editor for seed_labels.xml."""
-    import gradio as gr
+    try:
+        import gradio as gr
+    except ImportError as exc:
+        raise RuntimeError(
+            "Gradio is required for review-ui; install it with 'pip install gradio'"
+        ) from exc
 
     samples = load_dataset_xml(xml_path)
 

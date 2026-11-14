@@ -11,7 +11,7 @@ from typing import Any
 from rapidfuzz import fuzz, process
 
 from ..xml_io import CONFIGS_DIR, FilamentItem, parse_xml_file
-from .library_sync import MASTER_CATALOG_XML, infer_color_hex_and_family
+from .library_sync import MASTER_CATALOG_XML, has_known_color_match, infer_color_hex_and_family
 
 
 @dataclass
@@ -308,8 +308,13 @@ class CatalogMatcher:
                     return matched.name, matched.hex_code, matched.family, "catalog"
 
         if clean_q and clean_q.lower() not in ("unknown", "none", ""):
+            known = has_known_color_match(clean_q, self.taxonomy_root)
             hex_code, fam = infer_color_hex_and_family(clean_q, self.taxonomy_root)
-            return clean_q, hex_code or visual_hex, fam, "catalog"
+            if known:
+                return clean_q, hex_code, fam, "catalog"
+            if visual_hex:
+                return clean_q, visual_hex.lstrip("#").upper(), (visual_family or fam), "estimate"
+            return clean_q, hex_code, fam, "estimate"
 
         # Fall back to visual color family / hex match against catalog product colors
         if visual_hex and product and product.colors:

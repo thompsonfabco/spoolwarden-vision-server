@@ -53,7 +53,7 @@ def run_one_click_update(
 ) -> dict[str, Any]:
     """Ingest incoming Drive feedback bundles, check batch size, retrain models, and benchmark."""
     if source_dirs is None:
-        dirs = [DEFAULT_INCOMING_DIR, Path.home() / "Downloads"]
+        dirs = [DEFAULT_INCOMING_DIR]
     else:
         dirs = [Path(p) for p in source_dirs]
 
@@ -78,7 +78,13 @@ def run_one_click_update(
             ingested_images += res["imported_images"]
             dest = arch_dir / zp.name
             if dest.exists():
-                dest = arch_dir / f"{zp.stem}_dup{zp.suffix}"
+                dup_idx = 1
+                while True:
+                    cand = arch_dir / f"{zp.stem}_dup{dup_idx}{zp.suffix}"
+                    if not cand.exists():
+                        dest = cand
+                        break
+                    dup_idx += 1
             shutil.move(str(zp), str(dest))
             archived_files.append(dest.name)
 
@@ -131,9 +137,10 @@ def run_one_click_update(
 
         cmd = [
             sys.executable,
-            str(PROJECT_ROOT / "tools" / "build_release.py"),
+            str(PROJECT_ROOT / "tools" / "build_standalone_bundle.py"),
             "--version",
             release_version,
+            "--build-release",
         ]
         if key_file:
             cmd.extend(["--key-file", str(key_file)])

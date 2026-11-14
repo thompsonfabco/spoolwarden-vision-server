@@ -11,8 +11,10 @@ from typing import Any
 
 try:
     import defusedxml.ElementTree as SafeET
-except ImportError:  # fallback before defusedxml is installed
-    SafeET = StdET  # type: ignore[assignment]
+except ImportError as exc:
+    raise ImportError(
+        "defusedxml is required for safe XML parsing; install defusedxml>=0.7.1"
+    ) from exc
 
 
 def _detect_project_root() -> Path:
@@ -434,7 +436,7 @@ class IntakeReadResult:
             "questions": list(self.questions),
             "reader": {
                 "service": "filament-vision-server",
-                "module_version": "0.2.1",
+                "module_version": "0.2.2",
                 "tier_used": "gpu" if "gpu" in self.tier.lower() else "cpu",
                 "escalated": escalated,
                 "fallback_reason": fallback_reason,

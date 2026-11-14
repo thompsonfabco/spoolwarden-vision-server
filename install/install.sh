@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Standalone Linux installer for filament-vision-server (v0.2.1)
+# Standalone Linux installer for filament-vision-server (v0.2.2)
 # Usage:
 #   sudo bash install/install.sh [options]
 # Options:
@@ -144,8 +144,23 @@ if [[ "${UNINSTALL}" -eq 1 ]]; then
       fi
     fi
   done
+  PREFIX_REAL="$(cd "${PREFIX}" 2>/dev/null && pwd -P || echo "${PREFIX}")"
+  PROJECT_REAL="$(cd "${PROJECT_DIR}" 2>/dev/null && pwd -P || echo "${PROJECT_DIR}")"
   if [[ -d "${PREFIX}" ]]; then
-    rm -rf "${PREFIX}"
+    if [[ "${PREFIX_REAL}" == "${PROJECT_REAL}" ]]; then
+      rm -rf "${PREFIX}/.venv" "${PREFIX}/.uv-python"
+      rm -f "${PREFIX}/.installed" "${PREFIX}/server.pid" "${PREFIX}/start_server.sh" "${PREFIX}/stop_server.sh"
+      echo "[install.sh] Uninstalled in-place runtime files (source tree and user data preserved)."
+    else
+      rm -rf "${PREFIX}/.venv" "${PREFIX}/.uv-python" "${PREFIX}/configs" "${PREFIX}/models" \
+             "${PREFIX}/data/catalog" "${PREFIX}/data/logs"
+      rm -f "${PREFIX}/.installed" "${PREFIX}/server.pid" "${PREFIX}/start_server.sh" \
+            "${PREFIX}/stop_server.sh" "${PREFIX}/data/server.log"
+      rmdir "${PREFIX}/data" 2>/dev/null || true
+      if ! rmdir "${PREFIX}" 2>/dev/null; then
+        echo "[install.sh] Preserved remaining user data under ${PREFIX} (e.g. feedback_queue)."
+      fi
+    fi
   fi
   echo "[install.sh] Uninstalled cleanly."
   exit 0
@@ -349,6 +364,8 @@ bootstrap_python_with_uv() {
     return 1
   fi
   echo "[install.sh] Installing Python 3.12 via uv..."
+  mkdir -p "${PREFIX}"
+  export UV_PYTHON_INSTALL_DIR="${PREFIX}/.uv-python"
   "${uv_bin}" python install 3.12 || return 1
   local found=""
   found="$("${uv_bin}" python find 3.12 2>/dev/null || true)"
@@ -432,6 +449,10 @@ models_present_in_dir() {
 download_and_extract_assets_url() {
   local url="$1"
   local dest_dir="$2"
+  if [[ ! "${url}" =~ ^https:// && ! "${url}" =~ ^http://(127\.0\.0\.1|localhost)(:[0-9]+)?/ ]]; then
+    echo "[install.sh] ERROR: Refusing insecure non-HTTPS asset URL: ${url}" >&2
+    return 1
+  fi
   local tmp_file
   tmp_file="$(mktemp)"
   echo "[install.sh] Downloading model assets from ${url}..."
@@ -478,17 +499,19 @@ ensure_model_assets() {
     echo "" >&2
     echo "[install.sh] Model weights were not found in '${ASSETS:-./models}'." >&2
     local user_src=""
-    read -r -p "Enter a local models folder path or archive URL (.zip/.tar.gz), or type 'q' to quit: " user_src || exit 1
+    read -r -p "Enter a local models folder path or HTTPS archive URL (.zip/.tar.gz), or type 'q' to quit: " user_src || exit 1
     if [[ "${user_src}" =~ ^[Qq]$ || -z "${user_src}" ]]; then
       exit 1
     fi
-    if [[ "${user_src}" =~ ^https?:// ]]; then
+    if [[ "${user_src}" =~ ^https:// || "${user_src}" =~ ^http://(127\.0\.0\.1|localhost)(:[0-9]+)?/ ]]; then
       local dl_target="${PROJECT_DIR}/models"
       if download_and_extract_assets_url "${user_src}" "${dl_target}"; then
         ASSETS="${dl_target}"
       else
         echo "[install.sh] Download or extraction from '${user_src}' failed." >&2
       fi
+    elif [[ "${user_src}" =~ ^http:// ]]; then
+      echo "[install.sh] Plain HTTP asset URLs are not allowed; use HTTPS or a local directory." >&2
     elif [[ -d "${user_src}" ]]; then
       ASSETS="${user_src}"
     else
@@ -590,13 +613,13 @@ fi
 if [[ "${WITH_GPU}" -eq 1 ]]; then
   echo "[install.sh] Installing filament-vision-server[gpu]..."
   "${VENV_PIP}" install --no-cache-dir "${INSTALL_TARGET}[gpu]"
+  if [[ "${HAS_CUDA}" -eq 1 ]]; then
+    echo "[install.sh] CUDA GPU extras enabled; attempting onnxruntime-gpu upgrade (optional)..."
+    "${VENV_PIP}" install --no-cache-dir --upgrade onnxruntime-gpu || true
+  fi
 else
   echo "[install.sh] Installing filament-vision-server..."
   "${VENV_PIP}" install --no-cache-dir "${INSTALL_TARGET}"
-  if [[ "${HAS_CUDA}" -eq 1 && "${TIER}" == "auto" ]]; then
-    echo "[install.sh] CUDA GPU detected; attempting onnxruntime-gpu upgrade (optional)..."
-    "${VENV_PIP}" install --no-cache-dir --upgrade onnxruntime-gpu || true
-  fi
 fi
 
 verify_python_deps() {
@@ -623,6 +646,7 @@ if want_gpu:
         ("transformers", "transformers"),
         ("peft", "peft"),
         ("accelerate", "accelerate"),
+        ("bitsandbytes", "bitsandbytes"),
         ("qwen_vl_utils", "qwen-vl-utils"),
     ])
 missing = []
@@ -663,6 +687,7 @@ if want_gpu:
         ("transformers", "transformers"),
         ("peft", "peft"),
         ("accelerate", "accelerate"),
+        ("bitsandbytes", "bitsandbytes"),
         ("qwen_vl_utils", "qwen-vl-utils"),
     ])
 missing = []

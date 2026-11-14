@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import base64
 import datetime
+import hmac
 import json
 import logging
 import os
@@ -20,6 +21,9 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
+from PIL import UnidentifiedImageError
+
+from ..catalog.library_sync import OFFICIAL_COLOR_HEX_DB
 from ..catalog.matcher import CatalogMatcher
 from ..cpu_tier.pipeline import CPUHybridPipeline
 from ..gpu_tier.pipeline import GPUVLMPipeline
@@ -32,7 +36,7 @@ from ..xml_io import (
     to_xml_string,
     write_xml_atomic,
 )
-from .feedback import DEFAULT_FEEDBACK_DIR, FeedbackQueue
+from .feedback import DEFAULT_FEEDBACK_DIR, FeedbackQueue, _strip_data_uri
 from .web_ui import STANDALONE_WEB_UI_HTML
 
 log = logging.getLogger(__name__)
@@ -45,7 +49,7 @@ DEFAULT_FEEDBACK_ENDPOINT = (
     "AKfycbzfxi1uUckO6BXKNdTZi9R-BfQyLpSa8cTWyCTBL-o1MGXyL89V1qLS-88ouOPbcep1/exec"
 )
 
-MODULE_VERSION = "0.2.1"
+MODULE_VERSION = "0.2.2"
 API_VERSION = "1.1"
 MAX_PHOTOS = 8
 MAX_PHOTO_BYTES = 20 * 1024 * 1024  # 20 MB
@@ -62,49 +66,74 @@ class BusyError(Exception):
     pass
 
 
+_CONFIG_LOCK = threading.Lock()
+
+
+def _is_trusted_origin(origin: str) -> bool:
+    o = (origin or "").strip()
+    if not o:
+        return True
+    parsed = urlparse(o)
+    if parsed.scheme in ("http", "https") and (parsed.hostname or "").lower() in {
+        "127.0.0.1",
+        "localhost",
+        "::1",
+    }:
+        return True
+    allowed_env = os.environ.get("FILAMENT_VISION_SERVER_ALLOWED_ORIGINS", "")
+    if allowed_env:
+        allowed_set = {a.strip().rstrip("/").lower() for a in allowed_env.split(",") if a.strip()}
+        if o.rstrip("/").lower() in allowed_set:
+            return True
+    return False
+
+
 def load_service_config(path: str | Path | None = None) -> dict[str, Any]:
     p = Path(DEFAULT_SERVICE_CONFIG_XML if path is None else path)
-    default_endpoint = (
+    env_endpoint = (
         os.environ.get("FILAMENT_VISION_SERVER_FEEDBACK_ENDPOINT")
         or os.environ.get("FILAMENT_KIT_VISION_FEEDBACK_ENDPOINT")
-        or DEFAULT_FEEDBACK_ENDPOINT
-    )
+        or ""
+    ).strip()
+    default_endpoint = env_endpoint or DEFAULT_FEEDBACK_ENDPOINT
     env_token = (
         os.environ.get("FILAMENT_VISION_SERVER_TOKEN")
         or os.environ.get("FILAMENT_KIT_VISION_TOKEN")
         or ""
-    )
-    if not p.is_file():
-        return {
-            "tier": "auto",
-            "host": DEFAULT_HOST,
-            "port": DEFAULT_PORT,
-            "idle_unload_seconds": 300,
-            "token": env_token,
-            "feedback_opt_in": False,
-            "feedback_endpoint": default_endpoint,
-        }
-    try:
-        root = parse_xml_file(p)
-        return {
-            "tier": root.attrib.get("tier", "auto"),
-            "host": root.attrib.get("host", DEFAULT_HOST),
-            "port": int(root.attrib.get("port", str(DEFAULT_PORT))),
-            "idle_unload_seconds": int(root.attrib.get("idle-unload-seconds", "300")),
-            "token": root.attrib.get("token", env_token),
-            "feedback_opt_in": root.attrib.get("feedback-opt-in", "false").lower() == "true",
-            "feedback_endpoint": root.attrib.get("feedback-endpoint", default_endpoint),
-        }
-    except Exception:
-        return {
-            "tier": "auto",
-            "host": DEFAULT_HOST,
-            "port": DEFAULT_PORT,
-            "idle_unload_seconds": 300,
-            "token": env_token,
-            "feedback_opt_in": False,
-            "feedback_endpoint": default_endpoint,
-        }
+    ).strip()
+    with _CONFIG_LOCK:
+        if not p.is_file():
+            return {
+                "tier": "auto",
+                "host": DEFAULT_HOST,
+                "port": DEFAULT_PORT,
+                "idle_unload_seconds": 300,
+                "token": env_token,
+                "feedback_opt_in": False,
+                "feedback_endpoint": default_endpoint,
+            }
+        try:
+            root = parse_xml_file(p)
+            return {
+                "tier": root.attrib.get("tier", "auto"),
+                "host": root.attrib.get("host", DEFAULT_HOST),
+                "port": int(root.attrib.get("port", str(DEFAULT_PORT))),
+                "idle_unload_seconds": int(root.attrib.get("idle-unload-seconds", "300")),
+                "token": env_token or root.attrib.get("token", ""),
+                "feedback_opt_in": root.attrib.get("feedback-opt-in", "false").lower() == "true",
+                "feedback_endpoint": env_endpoint or root.attrib.get("feedback-endpoint") or default_endpoint,
+            }
+        except Exception as exc:
+            log.warning("Failed to load %s, using defaults: %s", p, exc)
+            return {
+                "tier": "auto",
+                "host": DEFAULT_HOST,
+                "port": DEFAULT_PORT,
+                "idle_unload_seconds": 300,
+                "token": env_token,
+                "feedback_opt_in": False,
+                "feedback_endpoint": default_endpoint,
+            }
 
 
 def save_service_config(cfg: dict[str, Any], path: str | Path | None = None) -> Path:
@@ -119,10 +148,12 @@ def save_service_config(cfg: dict[str, Any], path: str | Path | None = None) -> 
     }
     if cfg.get("token"):
         attrs["token"] = str(cfg["token"])
-    if cfg.get("feedback_endpoint"):
-        attrs["feedback-endpoint"] = str(cfg["feedback_endpoint"])
+    ep = str(cfg.get("feedback_endpoint") or "").strip()
+    if ep and ep != DEFAULT_FEEDBACK_ENDPOINT:
+        attrs["feedback-endpoint"] = ep
     root = StdET.Element("service-config", attrib=attrs)
-    return write_xml_atomic(target, root)
+    with _CONFIG_LOCK:
+        return write_xml_atomic(target, root)
 
 
 class FilamentRecognizer:
@@ -168,7 +199,8 @@ class FilamentRecognizer:
     def gpu_loaded(self) -> bool:
         if self._gpu_pipeline is None:
             return False
-        return self._gpu_pipeline._model is not None
+        with self._gpu_pipeline._lock:
+            return self._gpu_pipeline._model is not None
 
     def _get_gpu_pipeline(self) -> GPUVLMPipeline:
         if self._gpu_pipeline is None:
@@ -206,7 +238,12 @@ class FilamentRecognizer:
                 if needs_escalation:
                     if self.gpu_available():
                         try:
-                            priors = res.items if len(res.items) == len(images) else None
+                            prior_by_photo = {p: it for it in res.items for p in it.photos}
+                            priors = (
+                                [prior_by_photo.get(i) for i in range(len(images))]
+                                if prior_by_photo
+                                else None
+                            )
                             res = self._get_gpu_pipeline().predict(images, cpu_priors=priors)
                             escalated = True
                         except Exception as exc:
@@ -220,34 +257,16 @@ class FilamentRecognizer:
             if hint.strip():
                 for it in res.items:
                     self._apply_note_to_item(it, hint.strip())
-                res.questions = [
+                non_brand_q = [q for q in res.questions if "confirm filament brand" not in q.lower()]
+                brand_q = [
                     f"Photo {it.photos[0] if it.photos else 0}: Please confirm filament brand (detected {it.line} {it.color_name})."
                     for it in res.items
                     if it.vendor == "Unknown"
                 ]
+                res.questions = non_brand_q + brand_q
 
             # Match against live Spoolman catalog when provided
-            if spoolman_filaments:
-                for it in res.items:
-                    for f in spoolman_filaments:
-                        f_vendor = ((f.get("vendor") or {}).get("name") or "").strip()
-                        f_name = (f.get("name") or "").strip()
-                        if (
-                            f_vendor.lower() == it.vendor.lower()
-                            and (
-                                f_name.lower() == it.name.lower()
-                                or f_name.lower() == f"{it.line} {it.color_name}".lower()
-                            )
-                        ):
-                            it.existing_filament_id = f.get("id")
-                            it.vendor = f_vendor or it.vendor
-                            if f.get("spool_weight"):
-                                it.tare_grams = int(float(f["spool_weight"]))
-                            if f.get("density"):
-                                it.density = float(f["density"])
-                            if f.get("color_hex"):
-                                it.color_hex = str(f["color_hex"]).lstrip("#").upper()
-                            break
+            self._match_spoolman_catalog(res.items, spoolman_filaments, spoolman_vendors)
 
             self.last_read_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
             return res, escalated, fallback_reason
@@ -255,17 +274,62 @@ class FilamentRecognizer:
             with self._lock:
                 self._active_reads -= 1
 
+    def _match_spoolman_catalog(
+        self,
+        items: list[FilamentItem],
+        spoolman_filaments: list[dict[str, Any]] | None,
+        spoolman_vendors: list[dict[str, Any]] | None = None,
+    ) -> None:
+        if spoolman_vendors:
+            vendor_map = {
+                (v.get("name") or "").strip().lower(): (v.get("name") or "").strip()
+                for v in spoolman_vendors
+                if isinstance(v, dict) and (v.get("name") or "").strip()
+            }
+            for it in items:
+                canon = vendor_map.get(it.vendor.strip().lower())
+                if canon:
+                    it.vendor = canon
+        if not spoolman_filaments:
+            return
+        for it in items:
+            for f in spoolman_filaments:
+                if not isinstance(f, dict):
+                    continue
+                f_vendor = ((f.get("vendor") or {}).get("name") or "").strip()
+                f_name = (f.get("name") or "").strip()
+                if (
+                    f_vendor.lower() == it.vendor.lower()
+                    and (
+                        f_name.lower() == it.name.lower()
+                        or f_name.lower() == f"{it.line} {it.color_name}".lower()
+                    )
+                ):
+                    it.existing_filament_id = f.get("id")
+                    it.vendor = f_vendor or it.vendor
+                    if f.get("spool_weight"):
+                        it.tare_grams = int(float(f["spool_weight"]))
+                    if f.get("density"):
+                        it.density = float(f["density"])
+                    if f.get("color_hex"):
+                        it.color_hex = str(f["color_hex"]).lstrip("#").upper()
+                    break
+
     def _apply_note_to_item(self, item: FilamentItem, note_clean: str) -> None:
         """Apply explicit user hint/revision note fields onto item and re-enrich from catalog."""
         if not note_clean:
             return
-        for v_name in self.matcher.vendors.values():
+        for v_name in sorted(self.matcher.vendors.values(), key=len, reverse=True):
             if re.search(rf"\b{re.escape(v_name)}\b", note_clean, re.IGNORECASE):
-                item.vendor = v_name
+                if v_name != item.vendor:
+                    item.vendor = v_name
+                    item.line = item.material
+                    item.nozzle_range = None
+                    item.bed_range = None
                 break
 
         for mat_code in self.matcher._sorted_material_aliases:
-            if re.search(rf"\b{re.escape(mat_code)}\b", note_clean, re.IGNORECASE):
+            if re.search(rf"\b{re.escape(mat_code)}(?:\b|(?=\+|\s|$)|(?!\w))", note_clean, re.IGNORECASE):
                 new_mat = self.matcher.material_aliases[mat_code]
                 if new_mat != item.material or new_mat.lower() not in (item.line or "").lower():
                     item.material = new_mat
@@ -276,12 +340,36 @@ class FilamentRecognizer:
                     item.material = new_mat
                 break
 
-        for sub in ("Matte", "Silk", "Plus", "PLA+", "HF", "Pro", "Rapid", "High Speed", "Galaxy", "Marble", "Wood", "Glow", "Translucent", "Basic"):
-            if re.search(rf"\b{re.escape(sub)}\b", note_clean, re.IGNORECASE):
+        for sub in ("PLA+", "Matte", "Silk", "Plus", "HF", "Pro", "Rapid", "High Speed", "Galaxy", "Marble", "Wood", "Glow", "Translucent", "Basic"):
+            if re.search(rf"\b{re.escape(sub)}(?:\b|(?=\+|\s|$)|(?!\w))", note_clean, re.IGNORECASE):
                 if sub in ("Plus", "PLA+"):
-                    item.line = f"{item.material}+" if item.material == "PLA" else f"{item.material} Plus"
+                    new_line = f"{item.material}+" if item.material == "PLA" else f"{item.material} Plus"
                 else:
-                    item.line = f"{item.material} {sub}"
+                    new_line = f"{item.material} {sub}"
+                if new_line != item.line:
+                    item.line = new_line
+                    item.nozzle_range = None
+                    item.bed_range = None
+                break
+
+        # Match explicit color names mentioned in hint/note (product colors first, then official color DB)
+        prod = self.matcher.match_product_line(item.vendor, item.line, item.material)
+        color_candidates: list[str] = []
+        if prod and prod.colors:
+            color_candidates.extend(c.name.strip() for c in prod.colors if c.name and c.name.strip())
+        color_candidates.extend(k.strip() for k in OFFICIAL_COLOR_HEX_DB.keys() if k and k.strip())
+        seen_colors: set[str] = set()
+        unique_colors: list[str] = []
+        for cname in sorted(color_candidates, key=len, reverse=True):
+            cl = cname.lower()
+            if cl not in seen_colors and cl not in {"basic", "silk", "matte", "plus", "pro", "hf", "rapid"}:
+                seen_colors.add(cl)
+                unique_colors.append(cname)
+        for cname in unique_colors:
+            if re.search(rf"(?<!\w){re.escape(cname)}(?!\w)", note_clean, re.IGNORECASE):
+                item.color_name = cname
+                item.color_hex = None
+                item.color_hex_source = "catalog"
                 break
 
         nl = note_clean.lower()
@@ -305,33 +393,41 @@ class FilamentRecognizer:
         spoolman_vendors: list[dict[str, Any]] | None = None,
     ) -> IntakeReadResult:
         """Revise an intake item based on user notes and catalog constraints."""
+        def _coerce_int(val: Any, default: int) -> int:
+            return default if val is None or val == "" else int(float(val))
+
+        def _coerce_float(val: Any, default: float) -> float:
+            return default if val is None or val == "" else float(val)
+
         item = FilamentItem(
-            vendor=previous.get("vendor", "Unknown"),
-            material=previous.get("material", "PLA"),
-            line=previous.get("line", previous.get("material", "PLA")),
-            color_name=previous.get("color_name", "unknown"),
-            color_family=previous.get("color_family", "Black"),
+            vendor=previous.get("vendor") or "Unknown",
+            material=previous.get("material") or "PLA",
+            line=previous.get("line") or previous.get("material") or "PLA",
+            color_name=previous.get("color_name") or "unknown",
+            color_family=previous.get("color_family") or "Black",
             color_hex=previous.get("color_hex"),
-            net_grams=int(previous.get("net", 1000)),
-            tare_grams=int(previous.get("tare", 200)),
-            density=float(previous.get("density", 1.24)),
-            count=int(previous.get("count", 1)),
+            net_grams=_coerce_int(previous.get("net"), 1000),
+            tare_grams=_coerce_int(previous.get("tare"), 200),
+            density=_coerce_float(previous.get("density"), 1.24),
+            count=_coerce_int(previous.get("count"), 1),
             nozzle=previous.get("nozzle"),
             bed=previous.get("bed"),
             nozzle_range=previous.get("nozzle_range"),
             bed_range=previous.get("bed_range"),
             lot=previous.get("lot"),
             sealed=bool(previous.get("sealed", False)),
-            sealed_reason=str(previous.get("sealed_reason", "bare spool")),
+            sealed_reason=str(previous.get("sealed_reason") or "bare spool"),
             existing_filament_id=previous.get("existing_filament_id"),
             confidence=0.95,
             note=f"Revised by user note: '{note}'. Previously: {previous.get('vendor')} {previous.get('line')}",
-            photos=previous.get("photos", [0]),
+            photos=previous.get("photos") or [0],
         )
 
         note_clean = (note or "").strip()
         if note_clean:
             self._apply_note_to_item(item, note_clean)
+
+        self._match_spoolman_catalog([item], spoolman_filaments, spoolman_vendors)
 
         self.last_read_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
         return IntakeReadResult(
@@ -359,9 +455,12 @@ class _DaemonRequestHandler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(data)))
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+        origin = (self.headers.get("Origin") or "").strip() if self.headers else ""
+        if origin and _is_trusted_origin(origin):
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
+            self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
         if extra_headers:
             for k, v in extra_headers.items():
                 self.send_header(k, v)
@@ -369,7 +468,16 @@ class _DaemonRequestHandler(BaseHTTPRequestHandler):
         if data:
             self.wfile.write(data)
 
+    def _enforce_origin(self) -> bool:
+        origin = (self.headers.get("Origin") or "").strip() if self.headers else ""
+        if origin and not _is_trusted_origin(origin):
+            self._send_error(403, "forbidden_origin", f"Untrusted Origin header: {origin}")
+            return False
+        return True
+
     def do_OPTIONS(self) -> None:
+        if not self._enforce_origin():
+            return
         self._send_raw(204, b"", content_type="text/plain; charset=utf-8")
 
     def _send_json(self, code: int, payload: dict[str, Any], extra_headers: dict[str, str] | None = None) -> None:
@@ -392,7 +500,7 @@ class _DaemonRequestHandler(BaseHTTPRequestHandler):
             return True
         auth_hdr = (self.headers.get("Authorization") or "").strip()
         expected = f"Bearer {self.recognizer.auth_token}"
-        return auth_hdr == expected
+        return hmac.compare_digest(auth_hdr.encode("utf-8"), expected.encode("utf-8"))
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
@@ -488,6 +596,8 @@ class _DaemonRequestHandler(BaseHTTPRequestHandler):
         self._send_error(404, "not_found", f"Unknown route: {parsed.path}")
 
     def do_DELETE(self) -> None:
+        if not self._enforce_origin():
+            return
         parsed = urlparse(self.path)
         if parsed.path.startswith("/v1/feedback/") or parsed.path.startswith("/feedback/"):
             if not self._check_auth():
@@ -506,6 +616,8 @@ class _DaemonRequestHandler(BaseHTTPRequestHandler):
         self._send_error(404, "not_found", f"Unknown route: {parsed.path}")
 
     def do_POST(self) -> None:
+        if not self._enforce_origin():
+            return
         parsed = urlparse(self.path)
         if parsed.path not in (
             "/v1/read",
@@ -527,7 +639,15 @@ class _DaemonRequestHandler(BaseHTTPRequestHandler):
             self._send_error(401, "unauthorized", "Missing or invalid bearer token")
             return
 
-        length = int(self.headers.get("Content-Length") or "0")
+        raw_len = (self.headers.get("Content-Length") or "0").strip()
+        try:
+            length = int(raw_len)
+        except ValueError:
+            self._send_error(400, "bad_request", f"Invalid Content-Length header: {raw_len}")
+            return
+        if length < 0:
+            self._send_error(400, "bad_request", f"Negative Content-Length header: {length}")
+            return
         if length > MAX_BODY_BYTES:
             self._send_error(413, "too_large", f"Body size {length} exceeds maximum limit of {MAX_BODY_BYTES} bytes")
             return
@@ -614,6 +734,8 @@ class _DaemonRequestHandler(BaseHTTPRequestHandler):
                     note=str(body.get("note") or ""),
                 )
                 self._send_json(200, {"api_version": API_VERSION, **res})
+            except UnidentifiedImageError as exc:
+                self._send_error(415, "bad_image", f"Invalid feedback image: {exc}")
             except ValueError as exc:
                 self._send_error(400, "bad_request", str(exc))
             except Exception as exc:
@@ -626,7 +748,18 @@ class _DaemonRequestHandler(BaseHTTPRequestHandler):
             if not self.recognizer.feedback_opt_in:
                 self._send_error(403, "feedback_disabled", "Training feedback opt-in is disabled")
                 return
-            endpoint = str(body.get("endpoint") or self.recognizer.feedback_endpoint or "").strip()
+            custom_ep = str(body.get("endpoint") or "").strip()
+            if custom_ep and custom_ep != self.recognizer.feedback_endpoint:
+                ep_host = (urlparse(custom_ep).hostname or "").lower()
+                is_loopback = ep_host in {"127.0.0.1", "localhost", "::1"}
+                if not is_loopback and not self.recognizer.auth_token:
+                    self._send_error(
+                        403,
+                        "forbidden_endpoint",
+                        "Custom feedback endpoint override requires authentication or loopback target",
+                    )
+                    return
+            endpoint = custom_ep or self.recognizer.feedback_endpoint or ""
             try:
                 res = self.recognizer.feedback_queue.submit(endpoint_url=endpoint)
                 self._send_json(200, {"api_version": API_VERSION, **res})
@@ -683,7 +816,7 @@ class _DaemonRequestHandler(BaseHTTPRequestHandler):
                 self._send_error(400, "bad_request", f"Photo at index {idx} must be a base64 string")
                 return
             try:
-                raw_bytes = base64.b64decode(b64_str)
+                raw_bytes = _strip_data_uri(b64_str)
             except Exception as exc:
                 self._send_error(415, "bad_image", f"Failed to base64 decode photo index {idx}: {exc}")
                 return
@@ -716,6 +849,14 @@ class _DaemonRequestHandler(BaseHTTPRequestHandler):
             self._send_error(503, "tier_unavailable", str(tue))
         except BusyError as be:
             self._send_error(503, "busy", str(be), retry_after=5)
+        except UnidentifiedImageError as uie:
+            self._send_error(415, "bad_image", f"Unsupported or corrupt image: {uie}")
+        except ValueError as ve:
+            if "invalid or empty image" in str(ve).lower() or "empty image" in str(ve).lower():
+                self._send_error(415, "bad_image", str(ve))
+            else:
+                log.exception("Read failed with ValueError")
+                self._send_error(500, "read_failed", f"Inference execution failed: {ve}")
         except Exception as exc:
             log.exception("Read failed")
             self._send_error(500, "read_failed", f"Inference execution failed: {exc}")
@@ -773,8 +914,12 @@ def run_daemon_forever(
     def _sweeper() -> None:
         while True:
             time.sleep(30.0)
-            if server.RequestHandlerClass.recognizer._gpu_pipeline is not None:
-                server.RequestHandlerClass.recognizer._gpu_pipeline.unload_if_idle()
+            try:
+                gpu_pipe = server.RequestHandlerClass.recognizer._gpu_pipeline
+                if gpu_pipe is not None:
+                    gpu_pipe.unload_if_idle()
+            except Exception:
+                log.exception("GPU idle sweeper failed")
 
     t = threading.Thread(target=_sweeper, daemon=True)
     t.start()

@@ -5,19 +5,23 @@ import base64
 import io
 import json
 import random
-import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 from PIL import Image, ImageOps
-import pillow_heif
 
-from .daemon import FilamentRecognizer
+try:
+    import pillow_heif
+
+    pillow_heif.register_heif_opener()
+except ImportError:
+    pass
+
+from .daemon import FilamentRecognizer, MAX_BODY_BYTES
+from .feedback import _strip_data_uri
 from ..xml_io import PROJECT_ROOT
-
-pillow_heif.register_heif_opener()
 
 PLAYGROUND_HTML = """<!DOCTYPE html>
 <html lang="en">
@@ -139,30 +143,44 @@ fileInput.addEventListener('change', () => {
   }
 });
 
+function escHtml(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function renderTierCard(title, data) {
   if (data.error) {
-    return `<div class="card"><div class="tier-title"><strong>${title}</strong></div><div style="color:#f87171">${data.error}</div></div>`;
+    return `<div class="card"><div class="tier-title"><strong>${escHtml(title)}</strong></div><div style="color:#f87171">${escHtml(data.error)}</div></div>`;
   }
   const it = (data.dict && data.dict.items && data.dict.items[0]) || {};
-  const hex = it.color_hex || '808487';
-  const xmlEsc = (data.xml || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const rawHex = String(it.color_hex || '').replace(/^#/, '');
+  const hex = /^[0-9a-fA-F]{6}$/.test(rawHex) ? rawHex : '808487';
+  const cName = it.color_name || it._color_name || '-';
+  const cFam = it.color_family || it._color_family || '-';
+  const srcType = (it.reader_extra && it.reader_extra.source_type) || it._source_type || '-';
+  const confVal = it.confidence !== undefined ? it.confidence : (it._confidence || 0);
+  const xmlEsc = escHtml(data.xml || '');
   return `
     <div class="card">
       <div class="tier-title">
-        <strong>${title}</strong>
-        <span class="badge">${data.latency_ms} ms</span>
+        <strong>${escHtml(title)}</strong>
+        <span class="badge">${escHtml(data.latency_ms)} ms</span>
       </div>
       <table class="kv">
-        <tr><td class="k">Brand (vendor)</td><td class="v">${it.vendor || '-'}</td></tr>
-        <tr><td class="k">Product Line</td><td class="v">${it.line || '-'}</td></tr>
-        <tr><td class="k">Base Material</td><td class="v">${it.material || '-'}</td></tr>
-        <tr><td class="k">Color Name</td><td class="v">${it._color_name || '-'} (${it._color_family || '-'})</td></tr>
-        <tr><td class="k">Spoolman Name</td><td class="v">${it.name || '-'}</td></tr>
+        <tr><td class="k">Brand (vendor)</td><td class="v">${escHtml(it.vendor || '-')}</td></tr>
+        <tr><td class="k">Product Line</td><td class="v">${escHtml(it.line || '-')}</td></tr>
+        <tr><td class="k">Base Material</td><td class="v">${escHtml(it.material || '-')}</td></tr>
+        <tr><td class="k">Color Name</td><td class="v">${escHtml(cName)} (${escHtml(cFam)})</td></tr>
+        <tr><td class="k">Spoolman Name</td><td class="v">${escHtml(it.name || '-')}</td></tr>
         <tr><td class="k">Color Hex</td><td class="v"><span class="swatch" style="background:#${hex}"></span>#${hex}</td></tr>
-        <tr><td class="k">Nozzle / Bed</td><td class="v">${it.nozzle_range || '-'}°C (${it.nozzle || '-'}°C) / ${it.bed_range || '-'}°C</td></tr>
-        <tr><td class="k">Weight / Tare</td><td class="v">Net ${it.net || 1000}g / Tare ${it.tare || 200}g / Density ${it.density || 1.24}</td></tr>
-        <tr><td class="k">Sealed State</td><td class="v">${it.sealed ? 'Sealed (' + it.sealed_reason + ')' : 'Opened (' + it.sealed_reason + ')'}</td></tr>
-        <tr><td class="k">Source / Conf</td><td class="v">${it._source_type || '-'} (${Math.round((it._confidence || 0)*100)}%)</td></tr>
+        <tr><td class="k">Nozzle / Bed</td><td class="v">${escHtml(it.nozzle_range || '-')}°C (${escHtml(it.nozzle || '-')}°C) / ${escHtml(it.bed_range || '-')}°C</td></tr>
+        <tr><td class="k">Weight / Tare</td><td class="v">Net ${escHtml(it.net ?? 1000)}g / Tare ${escHtml(it.tare ?? 200)}g / Density ${escHtml(it.density ?? 1.24)}</td></tr>
+        <tr><td class="k">Sealed State</td><td class="v">${it.sealed ? 'Sealed (' + escHtml(it.sealed_reason || '') + ')' : 'Opened (' + escHtml(it.sealed_reason || '') + ')'}</td></tr>
+        <tr><td class="k">Source / Conf</td><td class="v">${escHtml(srcType)} (${Math.round(Number(confVal) * 100)}%)</td></tr>
       </table>
       <pre class="xml">${xmlEsc}</pre>
     </div>
@@ -207,6 +225,11 @@ async function testRandomHarvested() {
 }
 
 function updateUI(res) {
+  if (res.error) {
+    document.getElementById('statusText').textContent = res.error;
+    document.getElementById('resultsArea').innerHTML = '';
+    return;
+  }
   if (res.preview_b64) {
     const prev = document.getElementById('preview');
     prev.src = 'data:image/jpeg;base64,' + res.preview_b64;
@@ -258,14 +281,17 @@ def run_playground_server(host: str = "127.0.0.1", port: int = 7861) -> None:
             tiers_to_run = [("CPU Hybrid (ONNX)", "cpu"), ("GPU VLM (Qwen2.5-VL-7B 4-bit)", "gpu")] if tier_mode == "both" else [(f"{tier_mode.upper()} Mode", tier_mode)]
             for label, t_name in tiers_to_run:
                 try:
-                    res = recognizer.predict([jpg_bytes], tier=t_name)
+                    res, escalated, fallback_reason = recognizer.predict([jpg_bytes], tier=t_name)
                     out[label] = {
                         "latency_ms": round(res.latency_ms, 1),
-                        "dict": res.to_filament_kit_dict(),
+                        "dict": res.to_filament_kit_dict(
+                            escalated=escalated,
+                            fallback_reason=fallback_reason,
+                        ),
                         "xml": res.to_xml(),
                     }
                 except Exception as exc:
-                    out[label] = {"error": f"{exc}\n{traceback.format_exc()}"}
+                    out[label] = {"error": str(exc)}
             return out
 
         def do_GET(self) -> None:
@@ -282,7 +308,10 @@ def run_playground_server(host: str = "127.0.0.1", port: int = 7861) -> None:
             if parsed.path == "/api/random_seed":
                 qs = parse_qs(parsed.query)
                 tier = (qs.get("tier", ["cpu"])[0]).lower()
-                files = sorted(seed_dir.glob("*.HEIC"))
+                files = sorted(seed_dir.glob("*.HEIC")) if seed_dir.is_dir() else []
+                if not files:
+                    self._send_json(404, {"error": f"No .HEIC seed images found in {seed_dir}"})
+                    return
                 chosen = random.choice(files)
                 jpg_bytes = _decode_any_image_to_jpeg_bytes(chosen.read_bytes())
                 results = self._evaluate_tiers(jpg_bytes, tier)
@@ -300,7 +329,10 @@ def run_playground_server(host: str = "127.0.0.1", port: int = 7861) -> None:
                 qs = parse_qs(parsed.query)
                 tier = (qs.get("tier", ["cpu"])[0]).lower()
                 harvested_dir = PROJECT_ROOT / "data" / "harvested"
-                files = sorted(harvested_dir.glob("*.jpg"))
+                files = sorted(harvested_dir.glob("*.jpg")) if harvested_dir.is_dir() else []
+                if not files:
+                    self._send_json(404, {"error": f"No harvested images found in {harvested_dir}"})
+                    return
                 chosen = random.choice(files)
                 jpg_bytes = _decode_any_image_to_jpeg_bytes(chosen.read_bytes())
                 results = self._evaluate_tiers(jpg_bytes, tier)
@@ -320,12 +352,24 @@ def run_playground_server(host: str = "127.0.0.1", port: int = 7861) -> None:
             if self.path != "/api/test":
                 self._send_json(404, {"error": "Not found"})
                 return
-            length = int(self.headers.get("Content-Length") or "0")
-            payload = json.loads(self.rfile.read(length).decode("utf-8"))
-            raw_bytes = base64.b64decode(payload["image_b64"])
-            tier = str(payload.get("tier") or "cpu").lower()
-            fname = str(payload.get("filename") or "uploaded_image")
-            jpg_bytes = _decode_any_image_to_jpeg_bytes(raw_bytes)
+            raw_len = (self.headers.get("Content-Length") or "0").strip()
+            try:
+                length = int(raw_len)
+            except ValueError:
+                self._send_json(400, {"error": f"Invalid Content-Length: {raw_len}"})
+                return
+            if length <= 0 or length > MAX_BODY_BYTES:
+                self._send_json(413 if length > MAX_BODY_BYTES else 400, {"error": f"Invalid request size: {length}"})
+                return
+            try:
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                raw_bytes = _strip_data_uri(payload["image_b64"])
+                tier = str(payload.get("tier") or "cpu").lower()
+                fname = str(payload.get("filename") or "uploaded_image")
+                jpg_bytes = _decode_any_image_to_jpeg_bytes(raw_bytes)
+            except Exception as exc:
+                self._send_json(400, {"error": f"Invalid test payload or image: {exc}"})
+                return
             results = self._evaluate_tiers(jpg_bytes, tier)
             self._send_json(
                 200,

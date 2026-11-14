@@ -245,11 +245,11 @@ class CPUHybridPipeline:
         # Crop-first OCR: run multi-angle OCR on high-confidence label detections first to avoid full-image passes
         ih, iw = img_bgr.shape[:2]
         label_crops = [
-            b for b in det_boxes[:3]
+            (b_idx, b) for b_idx, b in enumerate(det_boxes[:3])
             if b.label in ("box_label", "spool_label") and b.confidence >= 0.55 and (b.x2 - b.x1) * (b.y2 - b.y1) < 0.72
         ]
         cropped_indices: set[int] = set()
-        for c_idx, b in enumerate(label_crops[:2]):
+        for orig_idx, b in label_crops[:2]:
             pad = 0.08
             px1 = max(0, int((b.x1 - pad) * iw))
             py1 = max(0, int((b.y1 - pad) * ih))
@@ -262,7 +262,7 @@ class CPUHybridPipeline:
                     crop = cv2.resize(crop, (int(crop.shape[1] * s_up), int(crop.shape[0] * s_up)), interpolation=cv2.INTER_CUBIC)
                 crop_lines, _ = extract_multi_angle_ocr_and_boxes(crop, self.ocr)
                 _append_lines(crop_lines)
-                cropped_indices.add(c_idx)
+                cropped_indices.add(orig_idx)
                 if _ocr_is_strong(ocr_lines):
                     break
 
@@ -359,14 +359,22 @@ class CPUHybridPipeline:
                 m_probs = self.text_parser["material_pipe"].predict_proba([joined_ocr])[0]
                 m_best_idx = int(np.argmax(m_probs))
                 if float(m_probs[m_best_idx]) >= 0.45:
-                    item.material = str(self.text_parser["material_pipe"].classes_[m_best_idx])
+                    new_mat = str(self.text_parser["material_pipe"].classes_[m_best_idx])
+                    if new_mat != item.material:
+                        item.material = new_mat
+                        item.nozzle_range = None
+                        item.bed_range = None
 
             if item.line in ("PLA", "PETG", "ABS", "ASA"):
                 l_probs = self.text_parser["line_pipe"].predict_proba([joined_ocr])[0]
                 l_best_idx = int(np.argmax(l_probs))
                 if float(l_probs[l_best_idx]) >= 0.42:
-                    item.line = str(self.text_parser["line_pipe"].classes_[l_best_idx])
-                    item.material = self.matcher.normalize_material(item.material, item.line)
+                    new_line = str(self.text_parser["line_pipe"].classes_[l_best_idx])
+                    if new_line != item.line:
+                        item.line = new_line
+                        item.material = self.matcher.normalize_material(item.material, item.line)
+                        item.nozzle_range = None
+                        item.bed_range = None
 
         v_ven, v_conf = vis_preds.get("visual_vendor", ("Other", 0.0))
         if len(ocr_vendor_cands) > 1:
@@ -465,7 +473,9 @@ class CPUHybridPipeline:
                 multi_angle_same = (
                     (existing.vendor == "Unknown" or it.vendor == "Unknown")
                     and not (existing.vendor == "Unknown" and it.vendor == "Unknown")
-                    and (existing.color_family == it.color_family or existing.material == it.material)
+                    and existing.color_family == it.color_family
+                    and existing.material == it.material
+                    and existing.sealed == it.sealed
                 )
                 if exact_same or multi_angle_same:
                     if idx not in existing.photos:
