@@ -431,12 +431,12 @@ class IntakeReadResult:
     ) -> dict[str, Any]:
         """Format as the complete response dict conforming to HTTP API contract v1."""
         res: dict[str, Any] = {
-            "api_version": "1.0",
+            "api_version": "1.1",
             "items": [it.to_filament_kit_item() for it in self.items],
             "questions": list(self.questions),
             "reader": {
                 "service": "filament-vision-server",
-                "module_version": "0.2.2",
+                "module_version": "0.2.3",
                 "tier_used": "gpu" if "gpu" in self.tier.lower() else "cpu",
                 "escalated": escalated,
                 "fallback_reason": fallback_reason,

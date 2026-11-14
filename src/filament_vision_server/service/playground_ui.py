@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 import base64
+import hmac
 import io
 import json
 import random
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
@@ -19,7 +20,14 @@ try:
 except ImportError:
     pass
 
-from .daemon import FilamentRecognizer, MAX_BODY_BYTES
+from ..cpu_tier.pipeline import _validate_image_dimensions
+from .daemon import (
+    FilamentRecognizer,
+    MAX_BODY_BYTES,
+    _DualStackThreadingHTTPServer,
+    _is_trusted_origin,
+    load_service_config,
+)
 from .feedback import _strip_data_uri
 from ..xml_io import PROJECT_ROOT
 
@@ -249,6 +257,7 @@ function updateUI(res) {
 
 
 def _decode_any_image_to_jpeg_bytes(raw_bytes: bytes) -> bytes:
+    _validate_image_dimensions(raw_bytes)
     with Image.open(io.BytesIO(raw_bytes)) as im:
         im = ImageOps.exif_transpose(im)
         rgb = im.convert("RGB")
@@ -263,18 +272,52 @@ def _decode_any_image_to_jpeg_bytes(raw_bytes: bytes) -> bytes:
 def run_playground_server(host: str = "127.0.0.1", port: int = 7861) -> None:
     recognizer = FilamentRecognizer(default_tier="auto")
     seed_dir = PROJECT_ROOT / "seed images"
+    auth_token = str(load_service_config().get("token") or "").strip()
 
     class PlaygroundHandler(BaseHTTPRequestHandler):
         def log_message(self, fmt: str, *args: Any) -> None:
             pass
+
+        def _enforce_origin(self) -> bool:
+            origin = (self.headers.get("Origin") or "").strip() if self.headers else ""
+            if origin and not _is_trusted_origin(origin):
+                self._send_json(403, {"error": f"Untrusted Origin header: {origin}"})
+                return False
+            return True
+
+        def _check_auth(self) -> bool:
+            if not auth_token:
+                return True
+            auth_hdr = (self.headers.get("Authorization") or "").strip()
+            expected = f"Bearer {auth_token}"
+            return hmac.compare_digest(auth_hdr.encode("utf-8"), expected.encode("utf-8"))
 
         def _send_json(self, code: int, obj: dict[str, Any]) -> None:
             data = json.dumps(obj).encode("utf-8")
             self.send_response(code)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(data)))
+            origin = (self.headers.get("Origin") or "").strip() if self.headers else ""
+            if origin and _is_trusted_origin(origin):
+                self.send_header("Access-Control-Allow-Origin", origin)
+                self.send_header("Vary", "Origin")
+                self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
+                self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
             self.end_headers()
             self.wfile.write(data)
+
+        def do_OPTIONS(self) -> None:
+            if not self._enforce_origin():
+                return
+            self.send_response(204)
+            origin = (self.headers.get("Origin") or "").strip() if self.headers else ""
+            if origin and _is_trusted_origin(origin):
+                self.send_header("Access-Control-Allow-Origin", origin)
+                self.send_header("Vary", "Origin")
+                self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
+                self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
 
         def _evaluate_tiers(self, jpg_bytes: bytes, tier_mode: str) -> dict[str, Any]:
             out: dict[str, Any] = {}
@@ -305,6 +348,10 @@ def run_playground_server(host: str = "127.0.0.1", port: int = 7861) -> None:
                 self.wfile.write(body)
                 return
 
+            if not self._check_auth():
+                self._send_json(401, {"error": "Missing or invalid bearer token"})
+                return
+
             if parsed.path == "/api/random_seed":
                 qs = parse_qs(parsed.query)
                 tier = (qs.get("tier", ["cpu"])[0]).lower()
@@ -328,10 +375,17 @@ def run_playground_server(host: str = "127.0.0.1", port: int = 7861) -> None:
             if parsed.path == "/api/random_harvested":
                 qs = parse_qs(parsed.query)
                 tier = (qs.get("tier", ["cpu"])[0]).lower()
-                harvested_dir = PROJECT_ROOT / "data" / "harvested"
-                files = sorted(harvested_dir.glob("*.jpg")) if harvested_dir.is_dir() else []
+                files: list[Path] = []
+                for candidate_dir in (
+                    PROJECT_ROOT / "data" / "harvested",
+                    PROJECT_ROOT / "data" / "seed_converted",
+                    PROJECT_ROOT / "data" / "feedback_verified",
+                ):
+                    if candidate_dir.is_dir():
+                        files.extend(sorted(candidate_dir.glob("*.jpg")))
+                        files.extend(sorted(candidate_dir.glob("*.png")))
                 if not files:
-                    self._send_json(404, {"error": f"No harvested images found in {harvested_dir}"})
+                    self._send_json(404, {"error": "No sample images found under data/harvested, seed_converted, or feedback_verified"})
                     return
                 chosen = random.choice(files)
                 jpg_bytes = _decode_any_image_to_jpeg_bytes(chosen.read_bytes())
@@ -349,8 +403,16 @@ def run_playground_server(host: str = "127.0.0.1", port: int = 7861) -> None:
             self._send_json(404, {"error": "Not found"})
 
         def do_POST(self) -> None:
+            if not self._enforce_origin():
+                return
+            if not self._check_auth():
+                self._send_json(401, {"error": "Missing or invalid bearer token"})
+                return
             if self.path != "/api/test":
                 self._send_json(404, {"error": "Not found"})
+                return
+            if (self.headers.get("Transfer-Encoding") or "").strip():
+                self._send_json(411, {"error": "Chunked Transfer-Encoding is not supported; provide Content-Length"})
                 return
             raw_len = (self.headers.get("Content-Length") or "0").strip()
             try:
@@ -380,7 +442,7 @@ def run_playground_server(host: str = "127.0.0.1", port: int = 7861) -> None:
                 },
             )
 
-    server = ThreadingHTTPServer((host, port), PlaygroundHandler)
+    server = _DualStackThreadingHTTPServer((host, port), PlaygroundHandler)
     print(f"[Playground UI] Running at http://{host}:{port}")
     server.serve_forever()
 

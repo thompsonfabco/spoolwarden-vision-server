@@ -28,7 +28,7 @@ if str(TOOLS_DIR) not in sys.path:
 
 from sign_release import generate_sha256sums, sign, verify  # noqa: E402
 
-DEFAULT_VERSION = "0.2.2"
+DEFAULT_VERSION = "0.2.3"
 
 COMMON_ROOT_FILES = (
     "pyproject.toml",
@@ -139,7 +139,7 @@ def build_bundle(
         skip_dirs = ("__pycache__",)
         skip_suffixes = (".pyc",)
 
-    for rel_dir in ("src", "install", "tools"):
+    for rel_dir in ("src", "install", "tools", "docs"):
         _copy_tree_filtered(
             PROJECT_ROOT / rel_dir,
             bundle_dir / rel_dir,
@@ -262,6 +262,12 @@ def build_release_archives(
     output_dir: str | Path | None = None,
     key_file: str | Path | None = None,
 ) -> Path:
+    dist_root = PROJECT_ROOT / "dist"
+    if dist_root.is_dir():
+        for child in list(dist_root.iterdir()):
+            if child.is_dir() and child.name.startswith("filament-vision-server-"):
+                shutil.rmtree(child, ignore_errors=True)
+
     release_dir = (Path(output_dir) if output_dir else (PROJECT_ROOT / "release")) / f"v{version}"
     if release_dir.exists():
         shutil.rmtree(release_dir)

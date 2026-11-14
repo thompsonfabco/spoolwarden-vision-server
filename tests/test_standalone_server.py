@@ -107,7 +107,7 @@ def test_health_and_cors_preflight(standalone_server):
     assert "access-control-allow-origin" not in hdrs
     payload = json.loads(raw.decode("utf-8"))
     assert payload["service"] == "filament-vision-server"
-    assert payload["module_version"] == "0.2.2"
+    assert payload["module_version"] == "0.2.3"
     assert payload["status"] == "ok"
     assert payload["tiers"]["cpu"]["usable"] is True
 
@@ -141,7 +141,8 @@ def test_read_and_revise_cpu_tier(standalone_server):
     assert isinstance(data.get("items"), list) and len(data["items"]) >= 1
     first = data["items"][0]
     assert "vendor" in first and "material" in first and "diameter" in first
-    assert data["reader"]["module_version"] == "0.2.2"
+    assert data["api_version"] == "1.1"
+    assert data["reader"]["module_version"] == "0.2.3"
 
     rev_status, _, rev_raw = _http_request(
         f"{base_url}/v1/revise",
@@ -672,3 +673,178 @@ def test_catalog_matcher_unknown_color_keeps_visual_hex():
     assert chex == "12AB34"
     assert cfam == "Green"
     assert hsrc == "estimate"
+
+
+def _make_oversized_png_bytes(width: int = 12000, height: int = 12000) -> bytes:
+    import struct
+    import zlib
+
+    def chunk(tag: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+
+    ihdr = struct.pack(">IIBBBBB", width, height, 8, 0, 0, 0, 0)
+    comp = zlib.compressobj(level=6)
+    row = b"\x00" + (b"\x00" * width)
+    idat_parts = [comp.compress(row) for _ in range(height)]
+    idat_parts.append(comp.flush())
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", b"".join(idat_parts)) + chunk(b"IEND", b"")
+
+
+def test_config_endpoint_ssrf_and_unauthenticated_override_blocked(standalone_server):
+    base_url, _, _ = standalone_server
+    st, _, raw = _http_request_any(
+        f"{base_url}/v1/config",
+        method="POST",
+        payload={
+            "api_version": "1.1",
+            "feedback_opt_in": True,
+            "feedback_endpoint": "https://attacker.example/steal",
+        },
+    )
+    assert st == 403
+    assert json.loads(raw.decode("utf-8"))["code"] == "forbidden_endpoint"
+
+    for bad_url in (
+        "https://169.254.169.254/latest/meta-data",
+        "https://192.168.1.10/hook",
+        "http://attacker.example/plain",
+    ):
+        with pytest.raises(ValueError):
+            feedback_mod._validate_upload_url(bad_url)
+
+
+def test_decompression_bomb_and_zip_ingest_limits(standalone_server, tmp_path, monkeypatch):
+    from filament_vision_server.cpu_tier.pipeline import CPUHybridPipeline
+
+    base_url, _, _ = standalone_server
+    bomb_png = _make_oversized_png_bytes(12000, 12000)
+    with pytest.raises(ValueError, match="exceed"):
+        CPUHybridPipeline._load_bgr(bomb_png)
+
+    bomb_b64 = base64.b64encode(bomb_png).decode("ascii")
+    st, _, raw = _http_request_any(
+        f"{base_url}/v1/read",
+        method="POST",
+        payload={"api_version": "1.1", "tier": "cpu", "images_b64": [bomb_b64]},
+    )
+    assert st == 413
+    assert json.loads(raw.decode("utf-8"))["code"] == "too_large"
+
+    zip_path = tmp_path / "bomb.zip"
+    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("pending_feedback.xml", "<feedback-queue>" + ("x" * 2048) + "</feedback-queue>")
+
+    monkeypatch.setattr(feedback_mod, "MAX_INGEST_XML_BYTES", 128)
+    with pytest.raises(ValueError, match="exceeds"):
+        feedback_mod.ingest_feedback_bundles(
+            zip_path,
+            dest_xml=tmp_path / "out.xml",
+            dest_images_dir=tmp_path / "imgs",
+        )
+
+
+def test_unlabeled_color_preserves_estimate_and_windings_refinement(monkeypatch):
+    import numpy as np
+    from filament_vision_server.catalog.matcher import CatalogMatcher
+    from filament_vision_server.cpu_tier import pipeline as cpu_pipe_mod
+    from filament_vision_server.data_engine.auto_labeler import parse_ocr_heuristic
+    from filament_vision_server.xml_io import BoundingBox
+
+    blank = np.zeros((200, 200, 3), dtype=np.uint8)
+    item, _ = parse_ocr_heuristic([], blank, CatalogMatcher(), is_spool=True)
+    assert item.color_name == "unknown"
+    assert item.color_hex_source == "estimate"
+
+    # Dark frame with a vivid blue swatch inside spool_windings (BGR: 230, 60, 20)
+    img = np.full((240, 240, 3), 25, dtype=np.uint8)
+    img[60:180, 60:180] = (230, 60, 20)
+    pipe = cpu_pipe_mod.CPUHybridPipeline()
+    monkeypatch.setattr(
+        pipe,
+        "_detect_regions",
+        lambda _im: [
+            BoundingBox(label="spool_windings", x1=0.25, y1=0.25, x2=0.75, y2=0.75, confidence=0.95),
+            BoundingBox(label="spool_flange", x1=0.05, y1=0.05, x2=0.95, y2=0.95, confidence=0.90),
+        ],
+    )
+    monkeypatch.setattr(cpu_pipe_mod, "extract_multi_angle_ocr_and_boxes", lambda _im, _o: ([], []))
+    monkeypatch.setattr(pipe, "_run_visual_onnx", lambda _im: {})
+
+    refined = pipe.predict_image(img)
+    assert refined.color_hex_source == "estimate"
+    assert refined.color_family == "Blue"
+
+
+def test_visual_vendor_confidence_and_gpu_available_in_cpu_tier(monkeypatch):
+    import sys
+    import types
+    import numpy as np
+    from filament_vision_server.cpu_tier import pipeline as cpu_pipe_mod
+
+    pipe = cpu_pipe_mod.CPUHybridPipeline()
+    img = np.zeros((200, 200, 3), dtype=np.uint8)
+    monkeypatch.setattr(pipe, "_detect_regions", lambda _im: [])
+    monkeypatch.setattr(cpu_pipe_mod, "extract_multi_angle_ocr_and_boxes", lambda _im, _o: ([], []))
+    monkeypatch.setattr(
+        pipe,
+        "_run_visual_onnx",
+        lambda _im: {
+            "visual_vendor": ("Prusament", 0.50),
+            "color_family": ("Orange", 0.80),
+            "visual_finish": ("Basic", 0.80),
+            "sealed_state": ("bare_spool", 0.80),
+        },
+    )
+
+    it = pipe.predict_image(img)
+    assert it.vendor == "Prusament"
+    assert it.confidence < 0.78
+
+    fake_torch = types.ModuleType("torch")
+    fake_torch.cuda = types.SimpleNamespace(is_available=lambda: True)
+    monkeypatch.setitem(sys.modules, "torch", fake_torch)
+    rec = daemon_mod.FilamentRecognizer(default_tier="cpu")
+    assert rec.gpu_available() is True
+
+
+def test_catalog_matcher_generic_material_product_line_ranking():
+    from filament_vision_server.catalog.matcher import CatalogMatcher
+
+    matcher = CatalogMatcher()
+    bambu = matcher.match_product_line("Bambu Lab", "PLA", "PLA")
+    polymaker = matcher.match_product_line("Polymaker", "PLA", "PLA")
+    overture = matcher.match_product_line("Overture", "PLA", "PLA")
+
+    assert bambu is not None and bambu.line == "PLA Basic"
+    assert polymaker is not None and polymaker.line == "PolyLite PLA"
+    assert overture is not None and overture.line == "PLA"
+
+
+def test_ipv6_bind_chunked_encoding_and_api_contract_doc(standalone_server):
+    import http.client
+    from urllib.parse import urlparse
+
+    base_url, _, _ = standalone_server
+    parsed = urlparse(base_url)
+    conn = http.client.HTTPConnection(parsed.hostname, parsed.port, timeout=10)
+    try:
+        conn.putrequest("POST", "/v1/read")
+        conn.putheader("Content-Type", "application/json")
+        conn.putheader("Transfer-Encoding", "chunked")
+        conn.endheaders()
+        resp = conn.getresponse()
+        body = json.loads(resp.read().decode("utf-8"))
+        assert resp.status == 411
+        assert body["code"] == "length_required"
+    finally:
+        conn.close()
+
+    srv6 = daemon_mod.start_daemon(host="::", port=0, tier="cpu")
+    try:
+        assert srv6.server_address[1] > 0
+    finally:
+        srv6.server_close()
+
+    doc_path = Path(__file__).resolve().parent.parent / "docs" / "api-contract.md"
+    assert doc_path.is_file()
+    assert "api_version" in doc_path.read_text(encoding="utf-8")

@@ -55,6 +55,24 @@ def _rgb_distance(hex1: str, hex2: str) -> float:
     return math.sqrt((((512 + rmean) * dr * dr) / 256.0) + 4 * dg * dg + (((767 - rmean) * db * db) / 256.0))
 
 
+_SPECIALTY_LINE_TOKENS = (
+    "aero", "draft", "support", "cf", "gf", "esd", "fr", "wood", "glow",
+    "marble", "sparkle", "galaxy", "metal", "silk", "matte", "translucent",
+    "tough", "hf", "high speed", "rapid", "lite", "dynamic", "celestial",
+    "luminous", "starlight", "neon", "shift", "cospla", "lw",
+)
+
+_BASELINE_LINE_BONUSES = (
+    ("basic", 8.0),
+    ("standard", 8.0),
+    ("polylite", 6.0),
+    ("classic", 6.0),
+    ("plus", 4.0),
+    ("pla+", 4.0),
+    ("pro", 3.0),
+)
+
+
 class CatalogMatcher:
     """Fast lookup and fuzzy matcher backed by data/catalog/filament_catalog.xml and configs/taxonomy.xml."""
 
@@ -264,26 +282,57 @@ class CatalogMatcher:
         material_hint: str = "",
     ) -> CatalogProduct | None:
         """Find the best CatalogProduct for a given vendor and line/subtype hint."""
-        candidates = self.products_by_vendor.get(vendor, [])
+        v_key = (vendor or "").strip().lower()
+        canon_v = self.vendors.get(v_key) or self.vendor_aliases.get(v_key)
+        if not canon_v and vendor:
+            resolved_v, _ = self.resolve_vendor(vendor)
+            if resolved_v != "Unknown":
+                canon_v = resolved_v
+        candidates = self.products_by_vendor.get(canon_v or vendor, [])
         if not candidates:
             return None
 
         q = (line_query or material_hint or "PLA").strip()
         q_low = q.lower()
 
-        # Exact match on line
-        for prod in candidates:
-            if prod.line.lower() == q_low:
-                return prod
-
         # Filter by base material if known
         norm_mat = self.normalize_material(material_hint, line_query)
         mat_candidates = [p for p in candidates if p.material.upper() == norm_mat.upper()] or candidates
 
-        choices = {i: p.line.lower() for i, p in enumerate(mat_candidates)}
-        best = process.extractOne(q_low, choices, scorer=fuzz.token_set_ratio)
-        if best and best[1] >= 72.0:
-            return mat_candidates[best[2]]
+        # Exact match on line within matching material first, then all vendor lines
+        for prod in mat_candidates:
+            if prod.line.lower() == q_low:
+                return prod
+        for prod in candidates:
+            if prod.line.lower() == q_low:
+                return prod
+
+        is_generic_mat = q_low == norm_mat.lower()
+        best_prod: CatalogProduct | None = None
+        best_score = -1e9
+        best_ts = 0.0
+        for prod in mat_candidates:
+            l_low = prod.line.lower()
+            ts = float(fuzz.token_set_ratio(q_low, l_low))
+            wr = float(fuzz.WRatio(q_low, l_low))
+            bonus = 0.0
+            penalty = 0.0
+            for spec in _SPECIALTY_LINE_TOKENS:
+                if re.search(rf"\b{re.escape(spec)}\b", l_low) and not re.search(rf"\b{re.escape(spec)}\b", q_low):
+                    penalty += 12.0
+            if is_generic_mat:
+                for pref, pts in _BASELINE_LINE_BONUSES:
+                    if re.search(rf"\b{re.escape(pref)}\b", l_low):
+                        bonus = max(bonus, pts)
+            len_diff = abs(len(l_low) - len(q_low)) * 0.2
+            score = ts * 0.65 + wr * 0.35 + bonus - penalty - len_diff
+            if ts >= 72.0 and score > best_score:
+                best_score = score
+                best_prod = prod
+                best_ts = ts
+
+        if best_prod is not None and best_ts >= 72.0:
+            return best_prod
 
         return mat_candidates[0] if mat_candidates else None
 
@@ -296,18 +345,18 @@ class CatalogMatcher:
     ) -> tuple[str, str, str, str]:
         """Return (color_name, color_hex, color_family, hex_source)."""
         clean_q = (color_query or "").strip()
-        if product and product.colors:
-            if clean_q:
-                for c in product.colors:
-                    if c.name.lower() == clean_q.lower():
-                        return c.name, c.hex_code, c.family, "catalog"
-                choices = {i: c.name.lower() for i, c in enumerate(product.colors)}
-                best = process.extractOne(clean_q.lower(), choices, scorer=fuzz.WRatio)
-                if best and best[1] >= 82.0:
-                    matched = product.colors[best[2]]
-                    return matched.name, matched.hex_code, matched.family, "catalog"
+        has_explicit_q = bool(clean_q and clean_q.lower() not in ("unknown", "none"))
+        if product and product.colors and has_explicit_q:
+            for c in product.colors:
+                if c.name.lower() == clean_q.lower():
+                    return c.name, c.hex_code, c.family, "catalog"
+            choices = {i: c.name.lower() for i, c in enumerate(product.colors)}
+            best = process.extractOne(clean_q.lower(), choices, scorer=fuzz.WRatio)
+            if best and best[1] >= 82.0:
+                matched = product.colors[best[2]]
+                return matched.name, matched.hex_code, matched.family, "catalog"
 
-        if clean_q and clean_q.lower() not in ("unknown", "none", ""):
+        if has_explicit_q:
             known = has_known_color_match(clean_q, self.taxonomy_root)
             hex_code, fam = infer_color_hex_and_family(clean_q, self.taxonomy_root)
             if known:

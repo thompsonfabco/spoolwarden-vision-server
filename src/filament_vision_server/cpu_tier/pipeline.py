@@ -5,6 +5,7 @@ import io
 import logging
 import os
 import time
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -63,11 +64,67 @@ def _create_ort_session(model_path: str | Path, sess_opts: ort.SessionOptions, p
 
 from ..catalog.matcher import CatalogMatcher
 from ..data_engine.auto_labeler import extract_multi_angle_ocr_and_boxes, parse_ocr_heuristic
-from ..xml_io import PROJECT_ROOT, BoundingBox, FilamentItem, IntakeReadResult
+from ..xml_io import CONFIGS_DIR, PROJECT_ROOT, BoundingBox, FilamentItem, IntakeReadResult, parse_xml_file
 from .color_lab import extract_filament_color
 from .labels import COLOR_FAMILIES, SEALED_STATES, VISUAL_FINISHES, VISUAL_VENDORS
 from .train_detector import DETECTOR_CLASSES
 from .unwarp import unwarp_circular_spool_label
+
+MAX_DECODE_PIXELS = 36_000_000
+MAX_DECODE_SIDE = 10_000
+
+
+def _validate_image_dimensions(image_input: str | Path | bytes | np.ndarray) -> tuple[int, int]:
+    """Validate image dimensions from header metadata before allocating full pixel buffers."""
+    if isinstance(image_input, np.ndarray):
+        if image_input.ndim < 2 or image_input.size == 0:
+            raise ValueError("Invalid or empty image passed to CPUHybridPipeline")
+        h, w = int(image_input.shape[0]), int(image_input.shape[1])
+    else:
+        if isinstance(image_input, bytes) and not image_input:
+            raise ValueError("Invalid or empty image passed to CPUHybridPipeline")
+        src: Any = io.BytesIO(image_input) if isinstance(image_input, bytes) else image_input
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("error", Image.DecompressionBombWarning)
+                with Image.open(src) as pil_im:
+                    w, h = pil_im.size
+        except (Image.DecompressionBombError, Image.DecompressionBombWarning) as exc:
+            raise ValueError(
+                "Image dimensions exceed maximum allowed pixel limit (decompression bomb rejected)"
+            ) from exc
+
+    if w <= 0 or h <= 0 or w > MAX_DECODE_SIDE or h > MAX_DECODE_SIDE or (w * h) > MAX_DECODE_PIXELS:
+        raise ValueError(
+            f"Image dimensions {w}x{h} ({w * h} pixels) exceed maximum allowed limit of {MAX_DECODE_PIXELS} pixels"
+        )
+    return int(w), int(h)
+
+
+def _box_iou(a: BoundingBox, b: BoundingBox) -> float:
+    ix1 = max(a.x1, b.x1)
+    iy1 = max(a.y1, b.y1)
+    ix2 = min(a.x2, b.x2)
+    iy2 = min(a.y2, b.y2)
+    inter = max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
+    if inter <= 0.0:
+        return 0.0
+    area_a = max(0.0, a.x2 - a.x1) * max(0.0, a.y2 - a.y1)
+    area_b = max(0.0, b.x2 - b.x1) * max(0.0, b.y2 - b.y1)
+    union = area_a + area_b - inter
+    return inter / union if union > 0.0 else 0.0
+
+
+def _nms_boxes(boxes: list[BoundingBox], iou_thresh: float) -> list[BoundingBox]:
+    """Apply class-aware greedy Non-Maximum Suppression to sorted bounding boxes."""
+    if not boxes or iou_thresh <= 0.0:
+        return boxes
+    kept: list[BoundingBox] = []
+    for cand in sorted(boxes, key=lambda b: b.confidence, reverse=True):
+        if any(cand.label == prev.label and _box_iou(cand, prev) > iou_thresh for prev in kept):
+            continue
+        kept.append(cand)
+    return kept
 
 
 def _softmax(x: np.ndarray) -> np.ndarray:
@@ -84,6 +141,25 @@ class CPUHybridPipeline:
         visual_onnx: str | Path = PROJECT_ROOT / "models" / "cpu" / "visual_multihead.onnx",
         text_parser_path: str | Path = PROJECT_ROOT / "models" / "cpu" / "text_parser.npz",
     ):
+        self.det_input_size = 384
+        self.det_conf_thresh = 0.35
+        self.det_iou_thresh = 0.45
+        self.vis_input_size = 224
+        cfg_path = CONFIGS_DIR / "cpu_pipeline.xml"
+        if cfg_path.is_file():
+            try:
+                cfg_root = parse_xml_file(cfg_path)
+                det_el = cfg_root.find("detector")
+                if det_el is not None:
+                    self.det_input_size = int(det_el.attrib.get("input-size", str(self.det_input_size)))
+                    self.det_conf_thresh = float(det_el.attrib.get("conf-threshold", str(self.det_conf_thresh)))
+                    self.det_iou_thresh = float(det_el.attrib.get("iou-threshold", str(self.det_iou_thresh)))
+                vis_el = cfg_root.find("visual-classifier")
+                if vis_el is not None:
+                    self.vis_input_size = int(vis_el.attrib.get("input-size", str(self.vis_input_size)))
+            except Exception as exc:
+                log.warning("Failed to parse %s, using default thresholds: %s", cfg_path, exc)
+
         self.matcher = CatalogMatcher()
         self.providers = select_onnx_providers()
         self.ocr = create_rapidocr(self.providers)
@@ -111,11 +187,19 @@ class CPUHybridPipeline:
         if tp_path.is_file():
             self.text_parser = load_text_parser_npz(tp_path)
 
-    def _detect_regions(self, img_bgr: np.ndarray, conf_thresh: float = 0.35) -> list[BoundingBox]:
+    def _detect_regions(
+        self,
+        img_bgr: np.ndarray,
+        conf_thresh: float | None = None,
+        iou_thresh: float | None = None,
+    ) -> list[BoundingBox]:
         """Run RF-DETR-N ONNX detector to locate box_label, spool_label, spool_windings, and spool_flange."""
         if self.detector_session is None:
             return []
-        resized = cv2.resize(img_bgr, (384, 384), interpolation=cv2.INTER_LINEAR)
+        eff_conf = self.det_conf_thresh if conf_thresh is None else float(conf_thresh)
+        eff_iou = self.det_iou_thresh if iou_thresh is None else float(iou_thresh)
+        in_sz = self.det_input_size
+        resized = cv2.resize(img_bgr, (in_sz, in_sz), interpolation=cv2.INTER_LINEAR)
         rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
         mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
         std = np.array([0.229, 0.224, 0.225], dtype=np.float32)
@@ -131,7 +215,7 @@ class CPUHybridPipeline:
             cls_probs = probs[i, :num_cls]
             cid = int(np.argmax(cls_probs))
             score = float(cls_probs[cid])
-            if score < conf_thresh:
+            if score < eff_conf:
                 continue
             cx, cy, bw, bh = [float(v) for v in dets[0, i]]
             x1 = max(0.0, min(1.0, cx - bw / 2.0))
@@ -150,12 +234,13 @@ class CPUHybridPipeline:
                     )
                 )
         results.sort(key=lambda b: b.confidence, reverse=True)
-        return results
+        return _nms_boxes(results, eff_iou)
 
     def _run_visual_onnx(self, img_bgr: np.ndarray) -> dict[str, tuple[str, float]]:
         if self.visual_session is None:
             return {}
-        resized = cv2.resize(img_bgr, (224, 224), interpolation=cv2.INTER_AREA)
+        v_sz = self.vis_input_size
+        resized = cv2.resize(img_bgr, (v_sz, v_sz), interpolation=cv2.INTER_AREA)
         rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
         mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
         std = np.array([0.229, 0.224, 0.225], dtype=np.float32)
@@ -182,6 +267,7 @@ class CPUHybridPipeline:
     @staticmethod
     def _load_bgr(image_input: str | Path | bytes | np.ndarray) -> np.ndarray:
         """Decode file path, raw bytes (JPEG/PNG/WEBP/HEIC/HEIF), or ndarray into BGR uint8."""
+        _validate_image_dimensions(image_input)
         img_bgr: np.ndarray | None = None
         if isinstance(image_input, (str, Path)):
             img_bgr = cv2.imread(str(image_input))
@@ -326,6 +412,7 @@ class CPUHybridPipeline:
         ocr_vendor_cands = self.matcher.find_vendor_candidates(joined_ocr) if ocr_lines else {}
 
         # Refine visually estimated filament color from detected spool_windings crop
+        windings_refined = False
         if item.color_hex_source == "estimate":
             windings = next((b for b in det_boxes if b.label == "spool_windings"), None)
             if windings is not None:
@@ -338,8 +425,9 @@ class CPUHybridPipeline:
                     w_hex, w_fam, _ = extract_filament_color(w_crop)
                     item.color_hex = w_hex
                     item.color_family = w_fam
-                    if item.color_name in COLOR_FAMILIES:
+                    if item.color_name in COLOR_FAMILIES or item.color_name.lower() == "unknown":
                         item.color_name = "unknown"
+                    windings_refined = True
 
         # Run Visual Multi-Head ONNX classifier predictions before fusion
         vis_preds = self._run_visual_onnx(img_bgr)
@@ -383,17 +471,17 @@ class CPUHybridPipeline:
             elif tp_ven in ocr_vendor_cands and tp_prob >= 0.50:
                 item.vendor = tp_ven
         elif heur_vendor == "Unknown":
-            if v_ven != "Other" and v_conf >= 0.75 and v_conf > tp_prob:
+            if v_ven != "Other" and v_conf >= 0.85 and v_conf > tp_prob:
                 item.vendor = v_ven
-                item.confidence = max(item.confidence, round(min(0.88, 0.78 + (v_conf - 0.45) * 0.20), 3))
+                item.confidence = max(item.confidence, round(min(0.88, 0.78 + (v_conf - 0.85) * 0.50), 3))
                 if "vendor" not in item.estimates:
                     item.estimates.append("vendor")
             elif tp_prob >= 0.35:
                 item.vendor = tp_ven
-                item.confidence = max(item.confidence, round(min(0.92, 0.78 + tp_prob * 0.20), 3))
+                item.confidence = round(min(0.90, 0.65 + tp_prob * 0.25), 3)
             elif v_ven != "Other" and v_conf >= 0.45:
                 item.vendor = v_ven
-                item.confidence = max(item.confidence, round(min(0.85, 0.78 + (v_conf - 0.45) * 0.20), 3))
+                item.confidence = round(min(0.76, 0.55 + v_conf * 0.20), 3)
                 if "vendor" not in item.estimates:
                     item.estimates.append("vendor")
 
@@ -401,11 +489,11 @@ class CPUHybridPipeline:
             v_col, c_conf = vis_preds["color_family"]
             v_fin, f_conf = vis_preds["visual_finish"]
 
-            # If color was only visually estimated (no explicit label color text), use ONNX color family if confident
+            # If color was only visually estimated (no explicit label color text), refine with ONNX color family when confident
             if item.color_hex_source == "estimate" and c_conf >= 0.50:
-                item.color_family = v_col
-                if item.color_name in COLOR_FAMILIES:
-                    item.color_name = v_col
+                if not windings_refined or c_conf >= 0.75:
+                    item.color_family = v_col
+                    item.color_name = "unknown"
 
             # If no label text at all, infer subtype from visual finish
             if not ocr_lines:

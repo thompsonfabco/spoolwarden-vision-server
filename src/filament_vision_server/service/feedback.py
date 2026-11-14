@@ -5,8 +5,10 @@ import base64
 import binascii
 import datetime
 import io
+import ipaddress
 import json
 import re
+import socket
 import threading
 import urllib.error
 import urllib.request
@@ -27,11 +29,15 @@ try:
 except ImportError:
     pass
 
+from ..cpu_tier.pipeline import _validate_image_dimensions
 from ..xml_io import DATA_DIR, AnnotatedSample, FilamentItem, parse_xml_file, write_xml_atomic
 
 MAX_FEEDBACK_PHOTOS = 8
 MAX_FEEDBACK_IMAGE_SIDE = 1024
 MAX_FEEDBACK_ZIP_BYTES = 25 * 1024 * 1024  # 25 MB cap for Apps Script doPost
+MAX_INGEST_XML_BYTES = 10 * 1024 * 1024
+MAX_INGEST_IMAGE_BYTES = 20 * 1024 * 1024
+MAX_INGEST_ARCHIVE_BYTES = 100 * 1024 * 1024
 DEFAULT_FEEDBACK_DIR = DATA_DIR / "feedback_queue"
 
 _ITEM_FIELDS = (
@@ -78,17 +84,60 @@ def _strip_data_uri(b64_str: str) -> bytes:
     return decode_image_b64(b64_str)
 
 
-def _validate_upload_url(url: str, *, allow_loopback_http: bool = True) -> tuple[str, str]:
-    """Validate that an upload endpoint uses HTTPS or explicit loopback HTTP."""
+def _assert_public_ip(ip_str: str, label: str) -> None:
+    """Reject private, loopback, link-local, multicast, reserved, or non-global IP targets."""
+    ip = ipaddress.ip_address(ip_str.split("%")[0])
+    if (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_multicast
+        or ip.is_reserved
+        or ip.is_unspecified
+        or not ip.is_global
+    ):
+        raise ValueError(f"Feedback upload endpoint '{label}' cannot target non-public IP address: {ip}")
+
+
+def _validate_upload_url(
+    url: str,
+    *,
+    allow_loopback_http: bool = True,
+    resolve_dns: bool = False,
+) -> tuple[str, str]:
+    """Validate that an upload endpoint uses HTTPS (public IPs only) or explicit loopback."""
     s = (url or "").strip()
     parsed = urlparse(s)
     scheme = parsed.scheme.lower()
-    host = (parsed.hostname or "").lower()
-    if scheme == "https" and host:
+    host = (parsed.hostname or "").lower().strip("[]")
+    if not host:
+        raise ValueError("A valid HTTPS feedback upload endpoint must be configured")
+
+    if host in {"127.0.0.1", "localhost", "::1"}:
+        if scheme == "https" or (allow_loopback_http and scheme == "http"):
+            return s, scheme
+        raise ValueError("A valid HTTPS feedback upload endpoint must be configured")
+
+    if scheme != "https":
+        raise ValueError("A valid HTTPS feedback upload endpoint must be configured")
+
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        try:
+            addr_info = socket.getaddrinfo(host, None)
+        except socket.gaierror as exc:
+            if resolve_dns:
+                raise ValueError(f"Cannot resolve feedback upload host '{host}': {exc}") from exc
+            return s, scheme
+        for info in addr_info:
+            sockaddr = info[4]
+            if sockaddr:
+                _assert_public_ip(str(sockaddr[0]), host)
         return s, scheme
-    if allow_loopback_http and scheme == "http" and host in {"127.0.0.1", "localhost", "::1"}:
-        return s, scheme
-    raise ValueError("A valid HTTPS feedback upload endpoint must be configured")
+
+    _assert_public_ip(host, host)
+    return s, scheme
 
 
 class _SafeUploadRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -99,7 +148,7 @@ class _SafeUploadRedirectHandler(urllib.request.HTTPRedirectHandler):
         self._allow_loopback_http = initial_scheme == "http"
 
     def redirect_request(self, req: Any, fp: Any, code: int, msg: str, headers: Any, newurl: str) -> Any:
-        _validate_upload_url(newurl, allow_loopback_http=self._allow_loopback_http)
+        _validate_upload_url(newurl, allow_loopback_http=self._allow_loopback_http, resolve_dns=True)
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
@@ -132,8 +181,9 @@ def _safe_float(value: Any, default: float) -> float:
 
 
 def sanitize_image_b64(b64_str: str, max_side: int = MAX_FEEDBACK_IMAGE_SIDE) -> bytes:
-    """Decode base64 image, bake EXIF orientation, resize, and re-encode as metadata-free JPEG."""
+    """Decode base64 image, validate pixel bounds, bake EXIF orientation, and re-encode as JPEG."""
     raw = _strip_data_uri(b64_str)
+    _validate_image_dimensions(raw)
     with Image.open(io.BytesIO(raw)) as img:
         img = ImageOps.exif_transpose(img)
         if img.mode != "RGB":
@@ -488,7 +538,7 @@ class FeedbackQueue:
         zip_bytes: bytes,
         timeout: float,
     ) -> dict[str, Any]:
-        clean_url, initial_scheme = _validate_upload_url(url)
+        clean_url, initial_scheme = _validate_upload_url(url, resolve_dns=True)
         payload = json.dumps(
             {
                 "filename": filename,
@@ -577,6 +627,36 @@ class FeedbackQueue:
         }
 
 
+def _read_zip_member_capped(
+    zf: zipfile.ZipFile,
+    name: str,
+    max_member_bytes: int,
+    archive_total: list[int],
+    max_archive_bytes: int = MAX_INGEST_ARCHIVE_BYTES,
+) -> bytes:
+    """Read a ZIP member incrementally while enforcing per-entry and archive-wide byte caps."""
+    info = zf.getinfo(name)
+    if info.file_size > max_member_bytes:
+        raise ValueError(f"ZIP entry '{name}' exceeds maximum allowed size ({info.file_size} > {max_member_bytes})")
+    if archive_total[0] + info.file_size > max_archive_bytes:
+        raise ValueError(f"ZIP archive decompressed total exceeds limit of {max_archive_bytes} bytes")
+    chunks: list[bytes] = []
+    total = 0
+    with zf.open(info, "r") as member_fp:
+        while True:
+            chunk = member_fp.read(64 * 1024)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > max_member_bytes:
+                raise ValueError(f"ZIP entry '{name}' decompressed size exceeds {max_member_bytes} bytes")
+            if archive_total[0] + total > max_archive_bytes:
+                raise ValueError(f"ZIP archive decompressed total exceeds limit of {max_archive_bytes} bytes")
+            chunks.append(chunk)
+    archive_total[0] += total
+    return b"".join(chunks)
+
+
 def ingest_feedback_bundles(
     source: str | Path,
     dest_xml: str | Path = DATA_DIR / "annotations" / "feedback_verified.xml",
@@ -620,7 +700,8 @@ def ingest_feedback_bundles(
             names = set(zf.namelist())
             if "pending_feedback.xml" not in names:
                 continue
-            xml_bytes = zf.read("pending_feedback.xml")
+            archive_total = [0]
+            xml_bytes = _read_zip_member_capped(zf, "pending_feedback.xml", MAX_INGEST_XML_BYTES, archive_total)
             fb_root = DefusedET.fromstring(xml_bytes)
 
             for entry_el in fb_root.findall("entry"):
@@ -637,8 +718,9 @@ def ingest_feedback_bundles(
                     fname = Path((im.text or "").strip()).name
                     if not fname or fname not in names:
                         continue
-                    img_bytes = zf.read(fname)
+                    img_bytes = _read_zip_member_capped(zf, fname, MAX_INGEST_IMAGE_BYTES, archive_total)
                     try:
+                        _validate_image_dimensions(img_bytes)
                         with Image.open(io.BytesIO(img_bytes)) as pil_im:
                             pil_im.verify()
                         with Image.open(io.BytesIO(img_bytes)) as pil_im2:

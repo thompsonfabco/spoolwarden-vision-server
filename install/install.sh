@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Standalone Linux installer for filament-vision-server (v0.2.2)
+# Standalone Linux installer for filament-vision-server (v0.2.3)
 # Usage:
 #   sudo bash install/install.sh [options]
 # Options:
@@ -520,6 +520,25 @@ ensure_model_assets() {
   done
 }
 
+MARKER="${PREFIX}/.installed"
+HAD_COMPLETE_INSTALL=0
+if [[ -f "${MARKER}" ]]; then
+  HAD_COMPLETE_INSTALL=1
+fi
+CREATED_PREFIX=0
+if [[ ! -d "${PREFIX}" ]]; then
+  CREATED_PREFIX=1
+fi
+
+cleanup_on_exit() {
+  local rc=$?
+  if [[ "${rc}" -ne 0 && "${HAD_COMPLETE_INSTALL}" -eq 0 && "${CREATED_PREFIX}" -eq 1 ]]; then
+    echo "[install.sh] Install failed (exit ${rc}); cleaning incomplete ${PREFIX}..." >&2
+    rm -rf "${PREFIX}" || true
+  fi
+}
+trap cleanup_on_exit EXIT
+
 # Step 1: Check and install OS/system dependencies + Python runtime
 ensure_linux_system_deps
 PYTHON_BIN=""
@@ -531,27 +550,6 @@ ensure_gpu_deps
 
 # Step 3: Ensure trained model assets are present (or downloaded/prompted)
 ensure_model_assets
-
-MARKER="${PREFIX}/.installed"
-HAD_COMPLETE_INSTALL=0
-if [[ -f "${MARKER}" ]]; then
-  HAD_COMPLETE_INSTALL=1
-fi
-CREATED_PREFIX=0
-
-cleanup_on_exit() {
-  local rc=$?
-  if [[ "${rc}" -ne 0 && "${HAD_COMPLETE_INSTALL}" -eq 0 && "${CREATED_PREFIX}" -eq 1 ]]; then
-    echo "[install.sh] Install failed (exit ${rc}); cleaning incomplete ${PREFIX}..." >&2
-    rm -rf "${PREFIX}" || true
-  fi
-}
-trap cleanup_on_exit EXIT
-
-if [[ ! -d "${PREFIX}" ]]; then
-  mkdir -p "${PREFIX}"
-  CREATED_PREFIX=1
-fi
 
 mkdir -p "${PREFIX}/configs" "${PREFIX}/data/catalog" "${PREFIX}/data/cache" "${PREFIX}/models/cpu" "${PREFIX}/models/gpu"
 
@@ -614,8 +612,12 @@ if [[ "${WITH_GPU}" -eq 1 ]]; then
   echo "[install.sh] Installing filament-vision-server[gpu]..."
   "${VENV_PIP}" install --no-cache-dir "${INSTALL_TARGET}[gpu]"
   if [[ "${HAS_CUDA}" -eq 1 ]]; then
-    echo "[install.sh] CUDA GPU extras enabled; attempting onnxruntime-gpu upgrade (optional)..."
-    "${VENV_PIP}" install --no-cache-dir --upgrade onnxruntime-gpu || true
+    echo "[install.sh] CUDA GPU extras enabled; switching onnxruntime to onnxruntime-gpu..."
+    "${VENV_PIP}" uninstall -y onnxruntime >/dev/null 2>&1 || true
+    if ! "${VENV_PIP}" install --no-cache-dir --upgrade onnxruntime-gpu; then
+      echo "[install.sh] WARNING: onnxruntime-gpu install failed; restoring CPU onnxruntime..." >&2
+      "${VENV_PIP}" install --no-cache-dir onnxruntime || true
+    fi
   fi
 else
   echo "[install.sh] Installing filament-vision-server..."
@@ -740,8 +742,11 @@ set -euo pipefail
 PID_FILE="${PREFIX}/server.pid"
 if [[ -f "\${PID_FILE}" ]]; then
   PID="\$(cat "\${PID_FILE}")"
-  if [[ -n "\${PID}" ]] && kill -0 "\${PID}" 2>/dev/null; then
-    kill "\${PID}" || true
+  if [[ "\${PID}" =~ ^[0-9]+$ ]] && kill -0 "\${PID}" 2>/dev/null; then
+    PROC_CMD="\$(ps -p "\${PID}" -o args= 2>/dev/null || true)"
+    if grep -Eq 'filament[_-]vision[_-]server|spool-server|python' <<<"\$PROC_CMD"; then
+      kill "\${PID}" || true
+    fi
   fi
   rm -f "\${PID_FILE}"
   echo "[filament-vision-server] Stopped."
@@ -771,13 +776,18 @@ HEALTH_URL="http://${HEALTH_HOST}:${PORT}/v1/health"
 if [[ "${NO_SYSTEMD}" -eq 0 && "$(id -u)" -eq 0 ]] && command -v systemctl >/dev/null 2>&1 && [[ -d /run/systemd/system ]]; then
   echo "[install.sh] Installing systemd service ${SYSTEMD_UNIT_PATH}..."
   mkdir -p /etc/filament-vision-server
-  sed \
-    -e "s|__PREFIX__|${PREFIX}|g" \
-    -e "s|__SERVICE_USER__|${SERVICE_USER}|g" \
-    -e "s|__BIND__|${BIND}|g" \
-    -e "s|__PORT__|${PORT}|g" \
-    -e "s|__TIER__|${TIER}|g" \
-    "${SCRIPT_DIR}/systemd/filament-vision-server.service" > "${SYSTEMD_UNIT_PATH}"
+  FVS_UNIT_PREFIX="${PREFIX}" \
+  FVS_UNIT_USER="${SERVICE_USER}" \
+  FVS_UNIT_BIND="${BIND}" \
+  FVS_UNIT_PORT="${PORT}" \
+  FVS_UNIT_TIER="${TIER}" \
+  FVS_UNIT_SRC="${SCRIPT_DIR}/systemd/filament-vision-server.service" \
+  FVS_UNIT_DST="${SYSTEMD_UNIT_PATH}" \
+  "${VENV_PY}" -c 'import os, pathlib
+txt = pathlib.Path(os.environ["FVS_UNIT_SRC"]).read_text(encoding="utf-8")
+for k, envk in (("__PREFIX__", "FVS_UNIT_PREFIX"), ("__SERVICE_USER__", "FVS_UNIT_USER"), ("__BIND__", "FVS_UNIT_BIND"), ("__PORT__", "FVS_UNIT_PORT"), ("__TIER__", "FVS_UNIT_TIER")):
+    txt = txt.replace(k, os.environ[envk])
+pathlib.Path(os.environ["FVS_UNIT_DST"]).write_text(txt, encoding="utf-8")'
   systemctl daemon-reload
   systemctl enable "${SERVICE_NAME}.service"
   systemctl restart "${SERVICE_NAME}.service"

@@ -7,10 +7,12 @@ from __future__ import annotations
 import base64
 import datetime
 import hmac
+import ipaddress
 import json
 import logging
 import os
 import re
+import socket
 import threading
 import time
 import urllib.error
@@ -36,7 +38,7 @@ from ..xml_io import (
     to_xml_string,
     write_xml_atomic,
 )
-from .feedback import DEFAULT_FEEDBACK_DIR, FeedbackQueue, _strip_data_uri
+from .feedback import DEFAULT_FEEDBACK_DIR, FeedbackQueue, _strip_data_uri, _validate_upload_url
 from .web_ui import STANDALONE_WEB_UI_HTML
 
 log = logging.getLogger(__name__)
@@ -49,7 +51,7 @@ DEFAULT_FEEDBACK_ENDPOINT = (
     "AKfycbzfxi1uUckO6BXKNdTZi9R-BfQyLpSa8cTWyCTBL-o1MGXyL89V1qLS-88ouOPbcep1/exec"
 )
 
-MODULE_VERSION = "0.2.2"
+MODULE_VERSION = "0.2.3"
 API_VERSION = "1.1"
 MAX_PHOTOS = 8
 MAX_PHOTO_BYTES = 20 * 1024 * 1024  # 20 MB
@@ -86,6 +88,20 @@ def _is_trusted_origin(origin: str) -> bool:
         if o.rstrip("/").lower() in allowed_set:
             return True
     return False
+
+
+def _is_loopback_client(client_ip: str) -> bool:
+    raw = (client_ip or "").strip().split("%")[0]
+    if not raw:
+        return False
+    try:
+        ip = ipaddress.ip_address(raw)
+        mapped = getattr(ip, "ipv4_mapped", None)
+        if mapped is not None:
+            return mapped.is_loopback
+        return ip.is_loopback
+    except ValueError:
+        return raw.lower() in {"127.0.0.1", "localhost", "::1"}
 
 
 def load_service_config(path: str | Path | None = None) -> dict[str, Any]:
@@ -185,9 +201,6 @@ class FilamentRecognizer:
 
     def gpu_available(self) -> bool:
         if self._gpu_available is None:
-            if self.default_tier == "cpu":
-                self._gpu_available = False
-                return False
             try:
                 import torch
 
@@ -204,7 +217,11 @@ class FilamentRecognizer:
 
     def _get_gpu_pipeline(self) -> GPUVLMPipeline:
         if self._gpu_pipeline is None:
-            self._gpu_pipeline = GPUVLMPipeline(idle_unload_seconds=self.idle_unload_seconds)
+            self._gpu_pipeline = GPUVLMPipeline(
+                idle_unload_seconds=self.idle_unload_seconds,
+                cpu_helper=self.cpu_pipeline,
+                matcher=self.matcher,
+            )
         return self._gpu_pipeline
 
     def predict(
@@ -639,6 +656,10 @@ class _DaemonRequestHandler(BaseHTTPRequestHandler):
             self._send_error(401, "unauthorized", "Missing or invalid bearer token")
             return
 
+        if (self.headers.get("Transfer-Encoding") or "").strip():
+            self._send_error(411, "length_required", "Chunked Transfer-Encoding is not supported; provide Content-Length")
+            return
+
         raw_len = (self.headers.get("Content-Length") or "0").strip()
         try:
             length = int(raw_len)
@@ -678,6 +699,27 @@ class _DaemonRequestHandler(BaseHTTPRequestHandler):
 
         # Handle POST /v1/config
         if parsed.path in ("/v1/config", "/config"):
+            client_ip = self.client_address[0] if self.client_address else ""
+            if not _is_loopback_client(client_ip) and not self.recognizer.auth_token:
+                self._send_error(403, "forbidden_config", "Remote configuration changes require authentication")
+                return
+            if "feedback_endpoint" in body and body["feedback_endpoint"] is not None:
+                ep_cand = str(body["feedback_endpoint"]).strip()
+                if ep_cand and ep_cand != self.recognizer.feedback_endpoint:
+                    ep_host = (urlparse(ep_cand).hostname or "").lower().strip("[]")
+                    is_loopback = ep_host in {"127.0.0.1", "localhost", "::1"}
+                    if not is_loopback and ep_cand != DEFAULT_FEEDBACK_ENDPOINT and not self.recognizer.auth_token:
+                        self._send_error(
+                            403,
+                            "forbidden_endpoint",
+                            "Custom feedback endpoint update requires authentication or loopback target",
+                        )
+                        return
+                    try:
+                        _validate_upload_url(ep_cand)
+                    except ValueError as exc:
+                        self._send_error(400, "bad_request", str(exc))
+                        return
             cfg = load_service_config()
             if "tier" in body and body["tier"] is not None:
                 tier_val = str(body["tier"]).lower()
@@ -685,7 +727,6 @@ class _DaemonRequestHandler(BaseHTTPRequestHandler):
                     self._send_error(400, "bad_request", f"Invalid tier: {body['tier']}")
                     return
                 self.recognizer.default_tier = tier_val
-                self.recognizer._gpu_available = None
                 cfg["tier"] = tier_val
             if "idle_unload_seconds" in body and body["idle_unload_seconds"] is not None:
                 try:
@@ -737,7 +778,11 @@ class _DaemonRequestHandler(BaseHTTPRequestHandler):
             except UnidentifiedImageError as exc:
                 self._send_error(415, "bad_image", f"Invalid feedback image: {exc}")
             except ValueError as exc:
-                self._send_error(400, "bad_request", str(exc))
+                msg_low = str(exc).lower()
+                if "exceed maximum allowed" in msg_low or "decompression bomb" in msg_low:
+                    self._send_error(413, "too_large", str(exc))
+                else:
+                    self._send_error(400, "bad_request", str(exc))
             except Exception as exc:
                 log.exception("Feedback enqueue failed")
                 self._send_error(500, "feedback_failed", str(exc))
@@ -852,7 +897,10 @@ class _DaemonRequestHandler(BaseHTTPRequestHandler):
         except UnidentifiedImageError as uie:
             self._send_error(415, "bad_image", f"Unsupported or corrupt image: {uie}")
         except ValueError as ve:
-            if "invalid or empty image" in str(ve).lower() or "empty image" in str(ve).lower():
+            msg_low = str(ve).lower()
+            if "exceed maximum allowed" in msg_low or "decompression bomb" in msg_low:
+                self._send_error(413, "too_large", str(ve))
+            elif "invalid or empty image" in msg_low or "empty image" in msg_low:
                 self._send_error(415, "bad_image", str(ve))
             else:
                 log.exception("Read failed with ValueError")
@@ -860,6 +908,29 @@ class _DaemonRequestHandler(BaseHTTPRequestHandler):
         except Exception as exc:
             log.exception("Read failed")
             self._send_error(500, "read_failed", f"Inference execution failed: {exc}")
+
+
+class _DualStackThreadingHTTPServer(ThreadingHTTPServer):
+    """ThreadingHTTPServer that binds IPv6 (including '::' dual-stack) cleanly alongside IPv4."""
+
+    def __init__(
+        self,
+        server_address: tuple[str, int],
+        RequestHandlerClass: Any,
+        bind_and_activate: bool = True,
+    ) -> None:
+        host = str(server_address[0] or "")
+        if ":" in host:
+            self.address_family = socket.AF_INET6
+        super().__init__(server_address, RequestHandlerClass, bind_and_activate=bind_and_activate)
+
+    def server_bind(self) -> None:
+        if self.address_family == socket.AF_INET6:
+            try:
+                self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+            except OSError:
+                pass
+        super().server_bind()
 
 
 def start_daemon(
@@ -886,7 +957,7 @@ def start_daemon(
         pass
 
     Handler.recognizer = recognizer
-    server = ThreadingHTTPServer((host, port), Handler)
+    server = _DualStackThreadingHTTPServer((host, port), Handler)
     return server
 
 

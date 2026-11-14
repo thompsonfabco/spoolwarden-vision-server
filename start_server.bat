@@ -4,8 +4,14 @@ set "ROOT=%~dp0"
 set "VENV_PY=%ROOT%.venv\Scripts\python.exe"
 
 if not exist "%VENV_PY%" (
-    echo [start_server.bat] Virtual environment not found. Running install.bat first...
-    call "%ROOT%install.bat"
+    echo [start_server.bat] Virtual environment not found. Running installer first...
+    set "FVS_BAT_ARGS=%*"
+    echo %FVS_BAT_ARGS% | findstr /I /C:"--no-browser" >nul
+    if errorlevel 1 (
+        powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%install\install.ps1" -Start -OpenBrowser
+    ) else (
+        powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%install\install.ps1" -Start
+    )
     exit /b %ERRORLEVEL%
 )
 

@@ -445,6 +445,7 @@ const state = {
   photoPreviews: [],  // object URL or data URL for thumbnails
   photoNames: [],
   items: [],
+  predictedItems: [],
   activeIdx: 0,
   lastResponse: null,
   sessionList: [],
@@ -661,7 +662,14 @@ function renderItemTabs() {
     b.type = "button";
     b.className = idx === state.activeIdx ? "primary" : "";
     b.textContent = `Item ${idx + 1}: ${it.vendor || "Unknown"} ${it.line || ""}`;
-    b.onclick = () => { state.activeIdx = idx; renderItemTabs(); populateForm(state.items[idx]); };
+    b.onclick = () => {
+      if (state.items[state.activeIdx]) {
+        state.items[state.activeIdx] = readFormObject();
+      }
+      state.activeIdx = idx;
+      renderItemTabs();
+      populateForm(state.items[idx]);
+    };
     tabs.appendChild(b);
   });
 }
@@ -691,6 +699,7 @@ async function runRecognize() {
     }
     state.lastResponse = data;
     state.items = data.items || [];
+    state.predictedItems = (data.items || []).map(it => JSON.parse(JSON.stringify(it)));
     state.activeIdx = 0;
     renderItemTabs();
     populateForm(state.items[0]);
@@ -723,6 +732,7 @@ async function runRevise() {
     if (!res.ok) throw new Error(data.message || data.error?.message || `HTTP ${res.status}`);
     if (data.item) {
       state.items[state.activeIdx] = data.item;
+      renderItemTabs();
       populateForm(data.item);
       document.getElementById("rawInspect").textContent = JSON.stringify(data, null, 2);
       setStatus("Item updated from revise note.");
@@ -754,9 +764,10 @@ async function queueFeedback() {
     return;
   }
   if (!document.getElementById("optInToggle").checked) {
-    await toggleOptIn(true);
+    setStatus("Please enable 'Opt in to correction training feedback' before queuing feedback.", true);
+    return;
   }
-  const predicted = state.items[state.activeIdx] || {};
+  const predicted = state.predictedItems[state.activeIdx] || state.items[state.activeIdx] || {};
   const corrected = readFormObject();
   const note = document.getElementById("reviseNote").value.trim();
   try {

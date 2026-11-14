@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import threading
 import time
 from pathlib import Path
@@ -14,8 +15,10 @@ from PIL import Image
 
 from ..catalog.matcher import CatalogMatcher
 from ..cpu_tier.pipeline import CPUHybridPipeline
-from ..xml_io import CONFIGS_DIR, PROJECT_ROOT, FilamentItem, IntakeReadResult
+from ..xml_io import CONFIGS_DIR, PROJECT_ROOT, FilamentItem, IntakeReadResult, parse_xml_file
 from .prompts import SYSTEM_PROMPT, USER_PROMPT
+
+log = logging.getLogger(__name__)
 
 
 _VERIFIED_BASE_CACHE: dict[str, tuple[Path, dict[str, tuple[int, int]]]] = {}
@@ -98,22 +101,55 @@ class GPUVLMPipeline:
         base_model_id: str = "Qwen/Qwen2.5-VL-7B-Instruct",
         device: str = "cuda:0",
         load_in_4bit: bool = True,
-        idle_unload_seconds: float = 300.0,
+        idle_unload_seconds: float | None = None,
+        cpu_helper: CPUHybridPipeline | None = None,
+        matcher: CatalogMatcher | None = None,
     ):
         self.adapter_dir = Path(adapter_dir)
         self.base_model_id = base_model_id
         self.device = device
         self.load_in_4bit = load_in_4bit
-        self.idle_unload_seconds = idle_unload_seconds
+        self.min_pixels = 256 * 28 * 28
+        self.max_pixels = 640 * 28 * 28
+        self.max_new_tokens = 165
+        self.do_sample = False
+        xml_idle = 300.0
 
-        self.matcher = CatalogMatcher()
-        self.cpu_helper = CPUHybridPipeline()
+        cfg_path = CONFIGS_DIR / "gpu_vlm_lora.xml"
+        if cfg_path.is_file():
+            try:
+                cfg_root = parse_xml_file(cfg_path)
+                bm_el = cfg_root.find("base-model")
+                if bm_el is not None:
+                    self.min_pixels = int(bm_el.attrib.get("min-pixels", str(self.min_pixels)))
+                    self.max_pixels = int(bm_el.attrib.get("max-pixels", str(self.max_pixels)))
+                inf_el = cfg_root.find("inference")
+                if inf_el is not None:
+                    self.device = inf_el.attrib.get("default-device", self.device)
+                    self.max_new_tokens = int(inf_el.attrib.get("max-new-tokens", str(self.max_new_tokens)))
+                    self.do_sample = inf_el.attrib.get("do-sample", "false").lower() == "true"
+                    xml_idle = float(inf_el.attrib.get("idle-unload-seconds", str(xml_idle)))
+            except Exception as exc:
+                log.warning("Failed to parse %s, using defaults: %s", cfg_path, exc)
+
+        self.idle_unload_seconds = xml_idle if idle_unload_seconds is None else float(idle_unload_seconds)
+
+        self._cpu_helper = cpu_helper
+        self.matcher = matcher or (cpu_helper.matcher if cpu_helper is not None else CatalogMatcher())
 
         self._model: Any = None
         self._processor: Any = None
         self._last_used: float = 0.0
         self._lock = threading.Lock()
         self._infer_lock = threading.Lock()
+
+    @property
+    def cpu_helper(self) -> CPUHybridPipeline:
+        if self._cpu_helper is None:
+            with self._lock:
+                if self._cpu_helper is None:
+                    self._cpu_helper = CPUHybridPipeline()
+        return self._cpu_helper
 
     def _ensure_loaded(self) -> None:
         with self._lock:
@@ -130,11 +166,15 @@ class GPUVLMPipeline:
 
             verified_base_dir = verify_pinned_base_model()
 
-            proc_src = str(self.adapter_dir) if (self.adapter_dir / "preprocessor_config.json").is_file() else str(verified_base_dir)
+            has_proc_cfg = (
+                (self.adapter_dir / "processor_config.json").is_file()
+                or (self.adapter_dir / "preprocessor_config.json").is_file()
+            )
+            proc_src = str(self.adapter_dir) if has_proc_cfg else str(verified_base_dir)
             self._processor = AutoProcessor.from_pretrained(
                 proc_src,
-                min_pixels=256 * 28 * 28,
-                max_pixels=640 * 28 * 28,
+                min_pixels=self.min_pixels,
+                max_pixels=self.max_pixels,
             )
 
             quant_cfg = None
@@ -241,8 +281,8 @@ class GPUVLMPipeline:
             with torch.no_grad():
                 gen_ids = self._model.generate(
                     **inputs,
-                    max_new_tokens=165,
-                    do_sample=False,
+                    max_new_tokens=self.max_new_tokens,
+                    do_sample=self.do_sample,
                     stopping_criteria=StoppingCriteriaList([_XmlEndStop()]),
                 )
             self._last_used = time.time()

@@ -30,10 +30,11 @@ function Stop-FilamentServerProcess {
     if (Test-Path $pidFile) {
         $rawPid = (Get-Content $pidFile -ErrorAction SilentlyContinue | Select-Object -First 1)
         if ($rawPid -match '^\d+$') {
-            $proc = Get-Process -Id ([int]$rawPid) -ErrorAction SilentlyContinue
-            if ($proc) {
+            $pidNum = [int]$rawPid
+            $cim = Get-CimInstance Win32_Process -Filter "ProcessId = $pidNum" -ErrorAction SilentlyContinue
+            if ($cim -and (($cim.CommandLine -match 'filament[_-]vision[_-]server|spool-server') -or ($cim.Name -match '^(python|filament|spool)'))) {
                 Write-Host "[install.ps1] Stopping server PID $rawPid..."
-                Stop-Process -Id ([int]$rawPid) -Force -ErrorAction SilentlyContinue
+                Stop-Process -Id $pidNum -Force -ErrorAction SilentlyContinue
             }
         }
         Remove-Item $pidFile -Force -ErrorAction SilentlyContinue
@@ -552,8 +553,13 @@ if ($isInPlace) {
 if ($LASTEXITCODE -ne 0) { throw "pip install failed." }
 
 if ($useGpuExtras -and $CudaReady) {
-    Write-Host "[install.ps1] CUDA GPU extras enabled; attempting optional onnxruntime-gpu upgrade..."
+    Write-Host "[install.ps1] CUDA GPU extras enabled; switching onnxruntime to onnxruntime-gpu..."
+    & $venvPip uninstall -y onnxruntime 2>$null
     & $venvPip install --no-cache-dir --upgrade onnxruntime-gpu 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "onnxruntime-gpu install failed; restoring CPU onnxruntime..."
+        & $venvPip install --no-cache-dir onnxruntime
+    }
 }
 
 function Test-AndRepairPythonDependencies {
@@ -624,7 +630,7 @@ $env:FILAMENT_VISION_SERVER_HOME = $TargetPrefix
 & $venvPy -m filament_vision_server.service.cli config --tier $Tier --host $Bind --port $Port | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "Failed to write service_config.xml." }
 
-Set-Content -Path (Join-Path $TargetPrefix ".installed") -Value "0.2.2" -Encoding ASCII
+Set-Content -Path (Join-Path $TargetPrefix ".installed") -Value "0.2.3" -Encoding ASCII
 
 if ($RegisterStartup) {
     try {

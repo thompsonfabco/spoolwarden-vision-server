@@ -298,7 +298,7 @@ def parse_ocr_heuristic(
         vendor=vendor,
         material=material,
         line=line,
-        color_name=color_name or vis_family,
+        color_name=color_name or "unknown",
         color_family=vis_family,
         color_hex=vis_hex,
         color_hex_source="estimate",
