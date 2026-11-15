@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Standalone Linux installer for filament-vision-server (v0.2.4)
+# Standalone Linux installer for filament-vision-server (v0.3.0)
 # Usage:
 #   sudo bash install/install.sh [options]
 # Options:
@@ -10,11 +10,13 @@ set -euo pipefail
 #   --bind <ip>               Bind address (default: 127.0.0.1)
 #   --user <username>         Service user for systemd unit (default: current sudo user or root)
 #   --prefix <dir>            Install prefix (default: /opt/filament-vision-server)
+#   --state-dir <dir>         External state folder for config, token, keys & queue
 #   --assets <dir>            Models directory (default: ./models)
 #   --with-gpu                Install optional PyTorch/Transformers/PEFT GPU extras
 #   --no-systemd              Skip systemd registration; emit start_server.sh / stop_server.sh
 #   -y, --non-interactive     Do not block waiting for interactive user input
 #   --uninstall               Stop service and remove installation under --prefix
+#   --purge                   With --uninstall, also delete external state folder (config, token, keys, queue)
 #   -h, --help                Show help
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -25,14 +27,16 @@ PORT="7920"
 BIND="127.0.0.1"
 SERVICE_USER="${SUDO_USER:-$(id -un)}"
 PREFIX="/opt/filament-vision-server"
+STATE_DIR=""
 ASSETS=""
 WITH_GPU=0
 NO_SYSTEMD=0
 NON_INTERACTIVE=0
 UNINSTALL=0
+PURGE=0
 
 usage() {
-  sed -n '4,19p' "$0" | sed 's/^# \?//'
+  sed -n '4,20p' "$0" | sed 's/^# \?//'
 }
 
 while [[ $# -gt 0 ]]; do
@@ -47,6 +51,8 @@ while [[ $# -gt 0 ]]; do
       SERVICE_USER="$2"; shift 2 ;;
     --prefix)
       PREFIX="$2"; shift 2 ;;
+    --state-dir)
+      STATE_DIR="$2"; shift 2 ;;
     --assets)
       ASSETS="$2"; shift 2 ;;
     --with-gpu)
@@ -57,6 +63,8 @@ while [[ $# -gt 0 ]]; do
       NON_INTERACTIVE=1; shift ;;
     --uninstall)
       UNINSTALL=1; shift ;;
+    --purge)
+      PURGE=1; shift ;;
     -h|--help)
       usage; exit 0 ;;
     *)
@@ -65,6 +73,14 @@ while [[ $# -gt 0 ]]; do
       exit 2 ;;
   esac
 done
+
+if [[ -z "${STATE_DIR}" ]]; then
+  if [[ "$(id -u)" -eq 0 ]]; then
+    STATE_DIR="/var/lib/filament-vision-server"
+  else
+    STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/filament-vision-server"
+  fi
+fi
 
 case "${TIER}" in
   auto|cpu|gpu) ;;
@@ -159,13 +175,30 @@ if [[ "${UNINSTALL}" -eq 1 ]]; then
       rm -f "${PREFIX}/.installed" "${PREFIX}/server.pid" "${PREFIX}/start_server.sh" \
             "${PREFIX}/stop_server.sh" "${PREFIX}/data/server.log"
       rmdir "${PREFIX}/data" 2>/dev/null || true
-      if ! rmdir "${PREFIX}" 2>/dev/null; then
-        echo "[install.sh] Preserved remaining user data under ${PREFIX} (e.g. feedback_queue)."
-      fi
+      rmdir "${PREFIX}" 2>/dev/null || true
     fi
   fi
-  if [[ -d /etc/filament-vision-server ]]; then
-    rmdir /etc/filament-vision-server 2>/dev/null || true
+  WAITING_COUNT=0
+  for qxml in "${STATE_DIR}/feedback_queue/pending_feedback.xml" "${PREFIX}/data/feedback_queue/pending_feedback.xml"; do
+    if [[ -f "${qxml}" ]]; then
+      c="$(grep -c '<entry ' "${qxml}" 2>/dev/null || true)"
+      WAITING_COUNT=$((WAITING_COUNT + ${c:-0}))
+    fi
+  done
+  if [[ "${PURGE}" -eq 1 ]]; then
+    rm -rf "${STATE_DIR}"
+    if [[ -d "${PREFIX}/data/feedback_queue" ]]; then
+      rm -rf "${PREFIX}/data/feedback_queue"
+      rmdir "${PREFIX}/data" 2>/dev/null || true
+      rmdir "${PREFIX}" 2>/dev/null || true
+    fi
+    rm -rf /etc/filament-vision-server
+    echo "[install.sh] Purged state folder ${STATE_DIR} (${WAITING_COUNT} waiting correction(s) removed)."
+  else
+    if [[ -d /etc/filament-vision-server ]]; then
+      rmdir /etc/filament-vision-server 2>/dev/null || true
+    fi
+    echo "[install.sh] Preserved state folder ${STATE_DIR} (config, token, keys, and ${WAITING_COUNT} waiting correction(s)). Re-run with --uninstall --purge to remove it."
   fi
   echo "[install.sh] Uninstalled cleanly."
   exit 0
@@ -741,9 +774,27 @@ PYEOF
 
 verify_python_deps
 
+mkdir -p "${STATE_DIR}"
+UPGRADE_DETECTED=0
+if [[ -f "${STATE_DIR}/service_config.xml" || -f "${PREFIX}/.installed" || -f "${PREFIX}/configs/service_config.xml" || -d "${PREFIX}/data/feedback_queue" ]]; then
+  UPGRADE_DETECTED=1
+fi
+if [[ -f "${PREFIX}/configs/service_config.xml" && ! -f "${STATE_DIR}/service_config.xml" ]]; then
+  cp -p "${PREFIX}/configs/service_config.xml" "${STATE_DIR}/service_config.xml"
+  chmod 0600 "${STATE_DIR}/service_config.xml" 2>/dev/null || true
+fi
+if [[ -d "${PREFIX}/data/feedback_queue" && ! -d "${STATE_DIR}/feedback_queue" ]]; then
+  cp -a "${PREFIX}/data/feedback_queue" "${STATE_DIR}/feedback_queue"
+fi
+if [[ "${UPGRADE_DETECTED}" -eq 1 ]]; then
+  echo "[install.sh] Upgrading in place: preserved existing config, token, keys, and feedback queue in ${STATE_DIR}."
+fi
+
 env -u FILAMENT_VISION_SERVER_TOKEN -u FILAMENT_KIT_VISION_TOKEN \
     -u FILAMENT_VISION_SERVER_FEEDBACK_ENDPOINT -u FILAMENT_KIT_VISION_FEEDBACK_ENDPOINT \
-    FILAMENT_VISION_SERVER_HOME="${PREFIX}" "${VENV_PY}" -m filament_vision_server.service.cli config \
+    FILAMENT_VISION_SERVER_HOME="${PREFIX}" \
+    FILAMENT_VISION_SERVER_STATE_DIR="${STATE_DIR}" \
+    "${VENV_PY}" -m filament_vision_server.service.cli config \
     --tier "${TIER}" --host "${BIND}" --port "${PORT}" >/dev/null
 
 HEALTH_HOST="${BIND}"
@@ -760,13 +811,15 @@ cat > "${PREFIX}/start_server.sh" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
 export FILAMENT_VISION_SERVER_HOME="${PREFIX}"
+export FILAMENT_VISION_SERVER_STATE_DIR="${STATE_DIR}"
 PID_FILE="${PREFIX}/server.pid"
 if [[ -f "\${PID_FILE}" ]] && kill -0 "\$(cat "\${PID_FILE}")" 2>/dev/null; then
   echo "[filament-vision-server] Already running (PID \$(cat "\${PID_FILE}"))."
   exit 0
 fi
+mkdir -p "${STATE_DIR}"
 nohup "${PREFIX}/.venv/bin/filament-vision-server" serve "\$@" \
-  >"${PREFIX}/data/server.log" 2>&1 &
+  >"${STATE_DIR}/server.log" 2>&1 &
 echo \$! > "\${PID_FILE}"
 echo "[filament-vision-server] Started (PID \$!) on http://${HEALTH_HOST_FMT}:${PORT}/"
 EOF
@@ -796,12 +849,14 @@ if [[ "$(id -u)" -eq 0 ]]; then
   if ! id -u "${SERVICE_USER}" >/dev/null 2>&1; then
     useradd --system --no-create-home --shell /usr/sbin/nologin "${SERVICE_USER}" || true
   fi
-  chown -R "${SERVICE_USER}:${SERVICE_USER}" "${PREFIX}" || true
+  chown -R "${SERVICE_USER}:${SERVICE_USER}" "${PREFIX}" "${STATE_DIR}" || true
+  chmod 0750 "${STATE_DIR}" 2>/dev/null || true
   if [[ -d /usr/local/bin ]]; then
     for bin_name in filament-vision-server spool-server; do
       cat > "/usr/local/bin/${bin_name}" <<WREOF
 #!/usr/bin/env bash
 export FILAMENT_VISION_SERVER_HOME="${PREFIX}"
+export FILAMENT_VISION_SERVER_STATE_DIR="${STATE_DIR}"
 exec "${PREFIX}/.venv/bin/${bin_name}" "\$@"
 WREOF
       chmod 0755 "/usr/local/bin/${bin_name}"
@@ -815,6 +870,7 @@ if [[ "${NO_SYSTEMD}" -eq 0 && "$(id -u)" -eq 0 ]] && command -v systemctl >/dev
   echo "[install.sh] Installing systemd service ${SYSTEMD_UNIT_PATH}..."
   mkdir -p /etc/filament-vision-server
   FVS_UNIT_PREFIX="${PREFIX}" \
+  FVS_UNIT_STATE_DIR="${STATE_DIR}" \
   FVS_UNIT_USER="${SERVICE_USER}" \
   FVS_UNIT_BIND="${BIND}" \
   FVS_UNIT_PORT="${PORT}" \
@@ -823,7 +879,7 @@ if [[ "${NO_SYSTEMD}" -eq 0 && "$(id -u)" -eq 0 ]] && command -v systemctl >/dev
   FVS_UNIT_DST="${SYSTEMD_UNIT_PATH}" \
   "${VENV_PY}" -c 'import os, pathlib
 txt = pathlib.Path(os.environ["FVS_UNIT_SRC"]).read_text(encoding="utf-8")
-for k, envk in (("__PREFIX__", "FVS_UNIT_PREFIX"), ("__SERVICE_USER__", "FVS_UNIT_USER"), ("__BIND__", "FVS_UNIT_BIND"), ("__PORT__", "FVS_UNIT_PORT"), ("__TIER__", "FVS_UNIT_TIER")):
+for k, envk in (("__PREFIX__", "FVS_UNIT_PREFIX"), ("__STATE_DIR__", "FVS_UNIT_STATE_DIR"), ("__SERVICE_USER__", "FVS_UNIT_USER"), ("__BIND__", "FVS_UNIT_BIND"), ("__PORT__", "FVS_UNIT_PORT"), ("__TIER__", "FVS_UNIT_TIER")):
     txt = txt.replace(k, os.environ[envk])
 pathlib.Path(os.environ["FVS_UNIT_DST"]).write_text(txt, encoding="utf-8")'
   systemctl daemon-reload

@@ -28,7 +28,7 @@ if str(TOOLS_DIR) not in sys.path:
 
 from sign_release import generate_sha256sums, sign, verify  # noqa: E402
 
-DEFAULT_VERSION = "0.2.4"
+DEFAULT_VERSION = "0.3.0"
 
 COMMON_ROOT_FILES = (
     "pyproject.toml",
@@ -342,6 +342,7 @@ def build_release_archives(
     manifest = {
         "service": "filament-vision-server",
         "version": version,
+        "api_version": "1.1",
         "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "signed": key_file is not None,
         "platforms": {

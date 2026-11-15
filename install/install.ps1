@@ -5,12 +5,14 @@ param(
     [int]$Port = 7920,
     [string]$Bind = "127.0.0.1",
     [string]$Prefix = "",
+    [string]$StateDir = "",
     [switch]$WithGpu,
     [switch]$RegisterStartup,
     [switch]$Start,
     [switch]$OpenBrowser,
     [switch]$NonInteractive,
-    [switch]$Uninstall
+    [switch]$Uninstall,
+    [switch]$Purge
 )
 
 $ErrorActionPreference = "Stop"
@@ -21,6 +23,12 @@ if ([string]::IsNullOrWhiteSpace($Prefix)) {
     $TargetPrefix = $ProjectRoot
 } else {
     $TargetPrefix = [System.IO.Path]::GetFullPath($Prefix)
+}
+if ([string]::IsNullOrWhiteSpace($StateDir)) {
+    $stateBase = if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA } else { Join-Path $env:USERPROFILE "AppData\Local" }
+    $TargetStateDir = Join-Path $stateBase "filament-vision-server"
+} else {
+    $TargetStateDir = [System.IO.Path]::GetFullPath($StateDir)
 }
 $IsInteractive = [Environment]::UserInteractive -and (-not $NonInteractive)
 
@@ -93,9 +101,28 @@ if ($Uninstall) {
         }
         if (-not (Get-ChildItem -Path $TargetPrefix -Force | Select-Object -First 1)) {
             Remove-Item $TargetPrefix -Force -ErrorAction SilentlyContinue
-        } else {
-            Write-Host "[install.ps1] Preserved remaining user data under $TargetPrefix (e.g. feedback_queue)."
         }
+    }
+    $waitingCount = 0
+    foreach ($qxml in @(
+        (Join-Path $TargetStateDir "feedback_queue\pending_feedback.xml"),
+        (Join-Path $TargetPrefix "data\feedback_queue\pending_feedback.xml")
+    )) {
+        if (Test-Path $qxml) {
+            $waitingCount += ([regex]::Matches((Get-Content $qxml -Raw), "<entry\b")).Count
+        }
+    }
+    if ($Purge) {
+        if (Test-Path $TargetStateDir) {
+            Remove-Item $TargetStateDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+        $legacyFb = Join-Path $TargetPrefix "data\feedback_queue"
+        if (Test-Path $legacyFb) {
+            Remove-Item $legacyFb -Recurse -Force -ErrorAction SilentlyContinue
+        }
+        Write-Host "[install.ps1] Purged state folder $TargetStateDir ($waitingCount waiting correction(s) removed)."
+    } else {
+        Write-Host "[install.ps1] Preserved state folder $TargetStateDir (config, token, keys, and $waitingCount waiting correction(s)). Re-run with -Uninstall -Purge to remove it."
     }
     Write-Host "[install.ps1] Uninstalled cleanly."
     exit 0
@@ -656,6 +683,25 @@ print(' '.join(dict.fromkeys(missing)))
 
 Test-AndRepairPythonDependencies -WantGpu:$useGpuExtras -UseCuda:$CudaReady
 
+New-Item -ItemType Directory -Force -Path $TargetStateDir | Out-Null
+$upgradeDetected = (Test-Path (Join-Path $TargetStateDir "service_config.xml")) `
+    -or (Test-Path (Join-Path $TargetPrefix ".installed")) `
+    -or (Test-Path (Join-Path $TargetPrefix "configs\service_config.xml")) `
+    -or (Test-Path (Join-Path $TargetPrefix "data\feedback_queue"))
+$legacyCfg = Join-Path $TargetPrefix "configs\service_config.xml"
+$stateCfg = Join-Path $TargetStateDir "service_config.xml"
+if ((Test-Path $legacyCfg) -and -not (Test-Path $stateCfg)) {
+    Copy-Item -Path $legacyCfg -Destination $stateCfg -Force
+}
+$legacyQueue = Join-Path $TargetPrefix "data\feedback_queue"
+$stateQueue = Join-Path $TargetStateDir "feedback_queue"
+if ((Test-Path $legacyQueue) -and -not (Test-Path $stateQueue)) {
+    Copy-Item -Path $legacyQueue -Destination $stateQueue -Recurse -Force
+}
+if ($upgradeDetected) {
+    Write-Host "[install.ps1] Upgrading in place: preserved existing config, token, keys, and feedback queue in $TargetStateDir."
+}
+
 $savedEnvVars = @{}
 foreach ($envName in @("FILAMENT_VISION_SERVER_TOKEN", "FILAMENT_KIT_VISION_TOKEN", "FILAMENT_VISION_SERVER_FEEDBACK_ENDPOINT", "FILAMENT_KIT_VISION_FEEDBACK_ENDPOINT")) {
     $savedEnvVars[$envName] = [Environment]::GetEnvironmentVariable($envName, "Process")
@@ -663,6 +709,7 @@ foreach ($envName in @("FILAMENT_VISION_SERVER_TOKEN", "FILAMENT_KIT_VISION_TOKE
 }
 try {
     $env:FILAMENT_VISION_SERVER_HOME = $TargetPrefix
+    $env:FILAMENT_VISION_SERVER_STATE_DIR = $TargetStateDir
     & $venvPy -m filament_vision_server.service.cli config --tier $Tier --host $Bind --port $Port | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "Failed to write service_config.xml." }
 } finally {
@@ -671,11 +718,11 @@ try {
     }
 }
 
-Set-Content -Path (Join-Path $TargetPrefix ".installed") -Value "0.2.4" -Encoding ASCII
+Set-Content -Path (Join-Path $TargetPrefix ".installed") -Value "0.3.0" -Encoding ASCII
 
 if ($RegisterStartup) {
     try {
-        $taskCmdArgs = "/c set `"FILAMENT_VISION_SERVER_HOME=$TargetPrefix`" && `"$venvCli`" serve"
+        $taskCmdArgs = "/c set `"FILAMENT_VISION_SERVER_HOME=$TargetPrefix`" && set `"FILAMENT_VISION_SERVER_STATE_DIR=$TargetStateDir`" && `"$venvCli`" serve"
         $action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument $taskCmdArgs -WorkingDirectory $TargetPrefix
         $trigger = New-ScheduledTaskTrigger -AtLogOn
         $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable

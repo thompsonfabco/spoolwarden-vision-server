@@ -1,9 +1,9 @@
-# Filament Vision Server (`v0.2.4`)
+# Filament Vision Server (`v0.3.0`)
 
 Standalone, cross-platform 3D printer filament spool recognition server for **Windows** and **Linux**, with a built-in dark-mode Web UI, dual-tier **ONNX CPU + Qwen2.5-VL GPU** inference, catalog enrichment, opt-in training feedback collection, and an HTTP REST API (`v1`).
 
 > [!TIP]
-> **New user?** Jump straight to the step-by-step **[User QuickStart Guide (`QUICKSTART.md`)](QUICKSTART.md)** or download a ready-to-run package from the **[`v0.2.4` Release](https://github.com/thompsonfabco/filament-vision-server/releases/tag/v0.2.4)**.
+> **New user?** Jump straight to the step-by-step **[User QuickStart Guide (`QUICKSTART.md`)](QUICKSTART.md)** or download a ready-to-run package from the **[`v0.3.0` Release](https://github.com/thompsonfabco/filament-vision-server/releases/tag/v0.3.0)**.
 
 ---
 
@@ -25,16 +25,16 @@ Standalone, cross-platform 3D printer filament spool recognition server for **Wi
 
 ---
 
-## Release Packages (`v0.2.4`)
+## Release Packages (`v0.3.0`)
 
-Platform-specific archives (`.zip` for Windows, `.tar.gz` for Linux) are published on the [GitHub Releases page](https://github.com/thompsonfabco/filament-vision-server/releases/tag/v0.2.4):
+Platform-specific archives (`.zip` for Windows, `.tar.gz` for Linux) are published on the [GitHub Releases page](https://github.com/thompsonfabco/filament-vision-server/releases/tag/v0.3.0):
 
 | Archive | Platform | Size | Tier Bundle |
 | :--- | :--- | :---: | :--- |
-| `filament-vision-server-0.2.4-windows.zip` | Windows (x64) | ~316 MB | Full (`models/cpu` + `models/gpu` LoRA adapter) |
-| `filament-vision-server-0.2.4-windows-cpu.zip` | Windows (x64) | ~146 MB | CPU-Only (`models/cpu` ONNX + OCR + catalog) |
-| `filament-vision-server-0.2.4-linux.tar.gz` | Linux (x86_64) | ~316 MB | Full (`models/cpu` + `models/gpu` LoRA adapter) |
-| `filament-vision-server-0.2.4-linux-cpu.tar.gz` | Linux (x86_64) | ~146 MB | CPU-Only (`models/cpu` ONNX + OCR + catalog) |
+| `filament-vision-server-0.3.0-windows.zip` | Windows (x64) | ~316 MB | Full (`models/cpu` + `models/gpu` LoRA adapter) |
+| `filament-vision-server-0.3.0-windows-cpu.zip` | Windows (x64) | ~146 MB | CPU-Only (`models/cpu` ONNX + OCR + catalog) |
+| `filament-vision-server-0.3.0-linux.tar.gz` | Linux (x86_64) | ~316 MB | Full (`models/cpu` + `models/gpu` LoRA adapter) |
+| `filament-vision-server-0.3.0-linux-cpu.tar.gz` | Linux (x86_64) | ~146 MB | CPU-Only (`models/cpu` ONNX + OCR + catalog) |
 
 Every release also includes `manifest.json`, `SHA256SUMS`, and an RFC 8032 Ed25519 signature `SHA256SUMS.sig`.
 
@@ -61,7 +61,7 @@ For full screenshots-free walkthroughs, firewall/LAN setup, and troubleshooting,
 
 ### Windows (One-Click)
 
-1. Extract `filament-vision-server-0.2.4-windows*.zip`.
+1. Extract `filament-vision-server-0.3.0-windows*.zip`.
 2. Double-click **`install.bat`** (or run PowerShell):
    ```powershell
    powershell -ExecutionPolicy Bypass -File .\install\install.ps1 -Start -OpenBrowser
@@ -82,8 +82,8 @@ Supported `install\install.ps1` options:
 Extract the `.tar.gz` archive and run `install/install.sh`:
 
 ```bash
-tar -xzf filament-vision-server-0.2.4-linux-cpu.tar.gz
-cd filament-vision-server-0.2.4-linux-cpu
+tar -xzf filament-vision-server-0.3.0-linux-cpu.tar.gz
+cd filament-vision-server-0.3.0-linux-cpu
 
 # System service install (/opt/filament-vision-server + systemd unit):
 sudo bash install/install.sh
@@ -238,10 +238,23 @@ filament-vision-server sync-catalog [--library-root PATH]
 | Variable | Description |
 | :--- | :--- |
 | `FILAMENT_VISION_SERVER_HOME` | Override base directory containing `configs/`, `data/`, and `models/` |
+| `FILAMENT_VISION_SERVER_STATE_DIR` | External state folder for `service_config.xml`, bearer token, Ed25519 feedback key, and `feedback_queue/` |
 | `FILAMENT_VISION_SERVER_TOKEN` | Require `Authorization: Bearer <token>` on API routes |
 | `FILAMENT_VISION_SERVER_ALLOWED_ORIGINS` | Comma-separated extra cross-origin URLs allowed alongside loopback & same-origin LAN UI (`http://...`) |
 | `FILAMENT_VISION_SERVER_FEEDBACK_ENDPOINT` | Override the default opt-in training feedback upload endpoint |
 | `FILAMENT_VISION_SERVER_CPU_ONLY=1` | Force ONNX Runtime `CPUExecutionProvider` (skip CUDA/DirectML/CoreML) |
+
+---
+
+## Opt-In Correction Feedback
+
+- **Off by default:** No correction or image is ever queued or uploaded unless you explicitly opt in.
+- **Nothing sent automatically:** Queued corrections wait locally in your state folder (`feedback_queue/`) until you press **Send** (or call `POST /v1/feedback/submit`).
+- **What a package holds:** Photos stripped of all EXIF/GPS metadata and resized to at most `1024 px`, the original reading, your correction, and an optional note.
+- **Where it goes:** Packages are uploaded to the project maintainer's write-only intake for review and future model training (`tools/google_apps_script_feedback.js` -> `filament-vision-server ingest-feedback`).
+- **Anonymous per-installation key:** On first opt-in, the service generates an anonymous Ed25519 key pair in its state folder (nothing else identifying is included) and signs each package's SHA-256 alongside a short proof-of-work nonce computed in the background at submit time.
+
+> **Note on `src/filament_vision_server/data_engine/`:** Contains offline dataset harvesting and auto-labeling tools used only for model training; it is not imported or used by the runtime service.
 
 ---
 
@@ -259,7 +272,7 @@ tools\run_wsl_installer_test.bat
 
 ### Build Platform-Specific Release Archives
 
-Stage bundles in `dist/` and package platform-specific archives (`.zip` for Windows, `.tar.gz` for Linux) with `manifest.json`, `SHA256SUMS`, and Ed25519 `SHA256SUMS.sig` under `release/v0.2.4/`:
+Stage bundles in `dist/` and package platform-specific archives (`.zip` for Windows, `.tar.gz` for Linux) with `manifest.json`, `SHA256SUMS`, and Ed25519 `SHA256SUMS.sig` under `release/v0.3.0/`:
 
 ```bash
 # Single platform bundle:
@@ -267,7 +280,7 @@ python tools/build_standalone_bundle.py --platform windows
 python tools/build_standalone_bundle.py --platform linux --no-gpu
 
 # Full signed release (windows.zip, windows-cpu.zip, linux.tar.gz, linux-cpu.tar.gz):
-python tools/build_standalone_bundle.py --version 0.2.4 --build-release --key-file /path/to/release_key.pem
+python tools/build_standalone_bundle.py --version 0.3.0 --build-release --key-file /path/to/release_key.pem
 ```
 
 ---

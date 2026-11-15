@@ -802,14 +802,31 @@ async function queueFeedback() {
 
 async function submitFeedback() {
   try {
-    setStatus("Uploading feedback bundle...");
+    setStatus("Preparing feedback bundle...");
     const res = await fetch("/v1/feedback/submit", {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({ api_version: "1.1" }),
     });
-    const data = await res.json();
+    let data = await res.json();
     if (!res.ok) throw new Error(data.message || data.error?.message || `HTTP ${res.status}`);
+    if (res.status === 202 || data.status === "running") {
+      while (true) {
+        const pct = Math.round((Number(data.progress || 0)) * 100);
+        setStatus(`Submitting feedback (${data.stage || "working"}, ${pct}%)...`);
+        await new Promise((r) => setTimeout(r, 500));
+        const poll = await fetch("/v1/feedback/submit", { headers: authHeaders() });
+        data = await poll.json();
+        if (!poll.ok) throw new Error(data.message || data.error?.message || `HTTP ${poll.status}`);
+        if (data.status === "completed") {
+          data = data.result || data;
+          break;
+        }
+        if (data.status === "failed") {
+          throw new Error(data.error || "Background feedback submit failed");
+        }
+      }
+    }
     const batchNote = (data.batches_submitted && data.batches_submitted > 1) ? ` in ${data.batches_submitted} batches` : "";
     setStatus(`Uploaded ${data.submitted_count} feedback entries${batchNote}.`);
     refreshHealthAndFeedback();

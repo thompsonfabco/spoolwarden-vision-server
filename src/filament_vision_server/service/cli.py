@@ -8,6 +8,7 @@ from pathlib import Path
 
 from ..catalog.library_sync import DEFAULT_LIBRARY_ROOT, build_master_catalog_xml
 from ..evaluation.benchmark import run_benchmark
+from ..xml_io import STATE_DIR
 from .daemon import (
     DEFAULT_HOST,
     DEFAULT_PORT,
@@ -18,7 +19,7 @@ from .daemon import (
     run_daemon_forever,
     save_service_config,
 )
-from .feedback import ingest_feedback_bundles
+from .feedback import MIN_POW_DIFFICULTY, ensure_feedback_keypair, ingest_feedback_bundles
 from .updater import run_one_click_update
 
 
@@ -34,6 +35,7 @@ def main(argv: list[str] | None = None) -> int:
     p_serve.add_argument("--host", default=None, help="Bind host (default: 127.0.0.1)")
     p_serve.add_argument("--port", type=int, default=None, help=f"Bind port (default: {DEFAULT_PORT})")
     p_serve.add_argument("--tier", choices=["auto", "cpu", "gpu"], default=None, help="Inference tier")
+    p_serve.add_argument("--feedback-endpoint", default=None, help="Override feedback upload URL (for local testing)")
 
     # predict
     p_pred = sub.add_parser("predict", help="Recognize filament from one or more image files")
@@ -73,6 +75,8 @@ def main(argv: list[str] | None = None) -> int:
     # ingest-feedback
     p_ingest = sub.add_parser("ingest-feedback", help="Import downloaded user-feedback .zip bundles into verified training XML")
     p_ingest.add_argument("source", help="Path to a feedback .zip file or directory of .zip files")
+    p_ingest.add_argument("--drop-key", action="append", default=[], help="Public key (base64) to block/drop")
+    p_ingest.add_argument("--min-pow-difficulty", type=int, default=MIN_POW_DIFFICULTY, help="Minimum PoW leading zero bits")
 
     # update-models (one-click training update)
     p_upd = sub.add_parser(
@@ -97,6 +101,7 @@ def main(argv: list[str] | None = None) -> int:
         host = args.host or cfg.get("host", DEFAULT_HOST)
         port = args.port or int(cfg.get("port", DEFAULT_PORT))
         tier = args.tier or cfg.get("tier", "auto")
+        fb_ep = args.feedback_endpoint.strip() if args.feedback_endpoint is not None else str(cfg.get("feedback_endpoint", ""))
         run_daemon_forever(
             host=host,
             port=port,
@@ -104,7 +109,7 @@ def main(argv: list[str] | None = None) -> int:
             idle_unload_seconds=float(cfg.get("idle_unload_seconds", 300)),
             auth_token=str(cfg.get("token", "")),
             feedback_opt_in=bool(cfg.get("feedback_opt_in", False)),
-            feedback_endpoint=str(cfg.get("feedback_endpoint", "")),
+            feedback_endpoint=fb_ep,
         )
         return 0
 
@@ -134,6 +139,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.feedback_opt_in is not None:
             cfg["feedback_opt_in"] = args.feedback_opt_in == "true"
             changed = True
+            if cfg["feedback_opt_in"]:
+                ensure_feedback_keypair(STATE_DIR)
         if args.feedback_endpoint is not None:
             cfg["feedback_endpoint"] = args.feedback_endpoint.strip()
             changed = True
@@ -199,7 +206,11 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "ingest-feedback":
-        summary = ingest_feedback_bundles(args.source)
+        summary = ingest_feedback_bundles(
+            args.source,
+            drop_keys=args.drop_key,
+            min_pow_difficulty=args.min_pow_difficulty,
+        )
         print(json.dumps(summary, indent=2))
         return 0
 

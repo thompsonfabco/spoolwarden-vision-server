@@ -43,6 +43,26 @@ CONFIGS_DIR = PROJECT_ROOT / "configs"
 DATA_DIR = PROJECT_ROOT / "data"
 
 
+def _detect_state_dir() -> Path | None:
+    env_state = (
+        os.environ.get("FILAMENT_VISION_SERVER_STATE_DIR")
+        or os.environ.get("FILAMENT_KIT_VISION_STATE_DIR")
+        or ""
+    ).strip()
+    if env_state:
+        return Path(env_state).resolve()
+    return None
+
+
+_ENV_STATE_DIR = _detect_state_dir()
+STATE_DIR = _ENV_STATE_DIR if _ENV_STATE_DIR is not None else DATA_DIR
+SERVICE_CONFIG_PATH = (
+    (_ENV_STATE_DIR / "service_config.xml")
+    if _ENV_STATE_DIR is not None
+    else (CONFIGS_DIR / "service_config.xml")
+)
+
+
 def parse_xml_file(path: str | Path) -> StdET.Element:
     """Safely parse an XML file from disk using defusedxml."""
     raw = Path(path).read_bytes()

@@ -4,12 +4,15 @@ from __future__ import annotations
 import base64
 import binascii
 import datetime
+import hashlib
 import http.client
 import io
 import ipaddress
 import json
+import os
 import re
 import socket
+import tempfile
 import threading
 import urllib.error
 import urllib.request
@@ -17,10 +20,13 @@ import uuid
 import xml.etree.ElementTree as StdET
 import zipfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, Iterable
 from urllib.parse import urlparse
 
 import defusedxml.ElementTree as DefusedET
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ed25519
 from PIL import Image, ImageOps
 
 try:
@@ -31,7 +37,7 @@ except ImportError:
     pass
 
 from ..cpu_tier.pipeline import _validate_image_dimensions
-from ..xml_io import DATA_DIR, PROJECT_ROOT, AnnotatedSample, FilamentItem, parse_xml_file, write_xml_atomic
+from ..xml_io import DATA_DIR, PROJECT_ROOT, STATE_DIR, AnnotatedSample, FilamentItem, parse_xml_file, write_xml_atomic
 
 MAX_FEEDBACK_PHOTOS = 8
 MAX_FEEDBACK_IMAGE_SIDE = 1024
@@ -39,7 +45,11 @@ MAX_FEEDBACK_ZIP_BYTES = 25 * 1024 * 1024  # 25 MB cap for Apps Script doPost
 MAX_INGEST_XML_BYTES = 10 * 1024 * 1024
 MAX_INGEST_IMAGE_BYTES = 20 * 1024 * 1024
 MAX_INGEST_ARCHIVE_BYTES = 100 * 1024 * 1024
-DEFAULT_FEEDBACK_DIR = DATA_DIR / "feedback_queue"
+DEFAULT_FEEDBACK_DIR = STATE_DIR / "feedback_queue"
+DEFAULT_KEY_FILENAME = "feedback_ed25519.pem"
+DEFAULT_POW_DIFFICULTY = 20
+MIN_POW_DIFFICULTY = 16
+VALID_FEEDBACK_SOURCES = ("local", "cloud")
 
 _ITEM_FIELDS = (
     "vendor",
@@ -324,14 +334,165 @@ def _el_to_item_dict(el: StdET.Element | None) -> dict[str, Any]:
     return out
 
 
-class FeedbackQueue:
-    """Manages locally queued user corrections in data/feedback_queue/pending_feedback.xml."""
+def ensure_feedback_keypair(
+    state_dir: str | Path = STATE_DIR,
+) -> tuple[ed25519.Ed25519PrivateKey, str]:
+    """Load or create the per-installation Ed25519 key pair in state_dir (0600 on POSIX)."""
+    sdir = Path(state_dir)
+    key_path = sdir / DEFAULT_KEY_FILENAME
+    if key_path.is_file():
+        priv = serialization.load_pem_private_key(key_path.read_bytes(), password=None)
+        if not isinstance(priv, ed25519.Ed25519PrivateKey):
+            raise ValueError(f"Expected Ed25519 private key in {key_path}")
+        if os.name != "nt":
+            try:
+                os.chmod(key_path, 0o600)
+            except OSError:
+                pass
+    else:
+        sdir.mkdir(parents=True, exist_ok=True)
+        priv = ed25519.Ed25519PrivateKey.generate()
+        pem = priv.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption(),
+        )
+        fd, tmp_name = tempfile.mkstemp(prefix=f".{DEFAULT_KEY_FILENAME}.", suffix=".tmp", dir=sdir)
+        try:
+            with os.fdopen(fd, "wb") as fh:
+                fh.write(pem)
+                fh.flush()
+                os.fsync(fh.fileno())
+            if os.name != "nt":
+                os.chmod(tmp_name, 0o600)
+            os.replace(tmp_name, key_path)
+            if os.name != "nt":
+                os.chmod(key_path, 0o600)
+        finally:
+            if os.path.exists(tmp_name):
+                try:
+                    os.unlink(tmp_name)
+                except OSError:
+                    pass
 
-    def __init__(self, queue_dir: str | Path = DEFAULT_FEEDBACK_DIR) -> None:
+    raw_pub = priv.public_key().public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw,
+    )
+    return priv, base64.b64encode(raw_pub).decode("ascii")
+
+
+def sign_package_sha256(priv_key: ed25519.Ed25519PrivateKey, pkg_sha256_hex: str) -> str:
+    """Sign a lowercase hex SHA-256 digest string with the installation's Ed25519 private key."""
+    sig = priv_key.sign(pkg_sha256_hex.strip().lower().encode("ascii"))
+    return base64.b64encode(sig).decode("ascii")
+
+
+def verify_package_signature(pub_b64: str, pkg_sha256_hex: str, sig_b64: str) -> bool:
+    """Verify an Ed25519 signature over a package's hex SHA-256 digest."""
+    if not pub_b64 or not pkg_sha256_hex or not sig_b64:
+        return False
+    try:
+        pub_raw = base64.b64decode(pub_b64.strip(), validate=True)
+        sig_raw = base64.b64decode(sig_b64.strip(), validate=True)
+        if len(pub_raw) != 32 or len(sig_raw) != 64:
+            return False
+        pub = ed25519.Ed25519PublicKey.from_public_bytes(pub_raw)
+        pub.verify(sig_raw, pkg_sha256_hex.strip().lower().encode("ascii"))
+        return True
+    except (ValueError, binascii.Error, InvalidSignature):
+        return False
+
+
+def verify_pow(pkg_sha256_hex: str, pub_b64: str, nonce: str, difficulty: int) -> bool:
+    """Verify SHA-256(package_sha256 + public_key + nonce) has at least `difficulty` leading zero bits."""
+    if not isinstance(nonce, str) or not nonce or isinstance(difficulty, bool):
+        return False
+    if not isinstance(difficulty, int) or difficulty < 1 or difficulty > 256:
+        return False
+    if not re.fullmatch(r"[0-9a-f]{64}", (pkg_sha256_hex or "").strip().lower()):
+        return False
+    if not (pub_b64 or "").strip():
+        return False
+    msg = f"{pkg_sha256_hex.strip().lower()}{pub_b64.strip()}{nonce}".encode("ascii", errors="strict")
+    digest = hashlib.sha256(msg).digest()
+    return (int.from_bytes(digest, "big") >> (256 - difficulty)) == 0
+
+
+def compute_pow(
+    pkg_sha256_hex: str,
+    pub_b64: str,
+    difficulty: int = DEFAULT_POW_DIFFICULTY,
+    progress_cb: Callable[[int], None] | None = None,
+) -> str:
+    """Find a decimal nonce so SHA-256(package_sha256 + public_key + nonce) has `difficulty` leading zero bits."""
+    if difficulty < 1 or difficulty > 256:
+        raise ValueError(f"Invalid PoW difficulty: {difficulty}")
+    prefix = f"{pkg_sha256_hex.strip().lower()}{pub_b64.strip()}".encode("ascii")
+    shift = 256 - difficulty
+    n = 0
+    while True:
+        digest = hashlib.sha256(prefix + str(n).encode("ascii")).digest()
+        if (int.from_bytes(digest, "big") >> shift) == 0:
+            return str(n)
+        n += 1
+        if progress_cb is not None and (n & 0xFFFF) == 0:
+            progress_cb(n)
+
+
+def validate_feedback_zip_bytes(zip_bytes: bytes) -> None:
+    """Validate that a feedback ZIP contains one pending_feedback.xml and JPEG files only at archive root."""
+    if not zip_bytes or not zip_bytes.startswith(b"PK\x03\x04"):
+        raise ValueError("Payload is not a valid ZIP archive")
+    with zipfile.ZipFile(io.BytesIO(zip_bytes), "r") as zf:
+        infos = zf.infolist()
+        if not infos:
+            raise ValueError("Feedback ZIP archive is empty")
+        xml_count = 0
+        seen: set[str] = set()
+        for info in infos:
+            name = info.filename
+            if info.is_dir() or not name or "/" in name or "\\" in name or ".." in name:
+                raise ValueError(f"Invalid entry in feedback ZIP: {name!r}")
+            if name in seen:
+                raise ValueError(f"Duplicate entry in feedback ZIP: {name!r}")
+            seen.add(name)
+            if name == "pending_feedback.xml":
+                xml_count += 1
+            elif name.lower().endswith((".jpg", ".jpeg")):
+                continue
+            else:
+                raise ValueError(f"Unexpected file in feedback ZIP: {name!r}")
+        if xml_count != 1:
+            raise ValueError("Feedback ZIP must contain exactly one pending_feedback.xml")
+
+
+class FeedbackQueue:
+    """Manages locally queued user corrections in feedback_queue/pending_feedback.xml."""
+
+    def __init__(
+        self,
+        queue_dir: str | Path = DEFAULT_FEEDBACK_DIR,
+        state_dir: str | Path | None = None,
+    ) -> None:
         self.queue_dir = Path(queue_dir)
+        self.state_dir = Path(state_dir) if state_dir is not None else self.queue_dir.parent
         self.xml_path = self.queue_dir / "pending_feedback.xml"
         self._lock = threading.RLock()
         self._submit_lock = threading.Lock()
+        self._submit_job_lock = threading.Lock()
+        self._submit_job: dict[str, Any] = {
+            "id": "",
+            "status": "idle",
+            "stage": "idle",
+            "batch": 0,
+            "total_batches": 0,
+            "submitted_count": 0,
+            "total_entries": 0,
+            "progress": 0.0,
+            "error": "",
+            "result": None,
+        }
 
     def _load_root(self) -> StdET.Element:
         if self.xml_path.is_file():
@@ -348,6 +509,8 @@ class FeedbackQueue:
         predicted: dict[str, Any],
         corrected: dict[str, Any],
         note: str = "",
+        source: str = "local",
+        record_id: str | None = None,
     ) -> dict[str, Any]:
         if not images_b64:
             raise ValueError("At least one image is required in images_b64")
@@ -355,6 +518,18 @@ class FeedbackQueue:
             raise ValueError(f"Too many images ({len(images_b64)} > {MAX_FEEDBACK_PHOTOS})")
         if not isinstance(predicted, dict) or not isinstance(corrected, dict):
             raise ValueError("'predicted' and 'corrected' must be JSON objects")
+
+        src_clean = (source or "local").strip().lower() if isinstance(source, str) else ""
+        if src_clean not in VALID_FEEDBACK_SOURCES:
+            raise ValueError(f"Invalid feedback source {source!r}; must be 'local' or 'cloud'")
+
+        rec_id_clean = ""
+        if record_id is not None:
+            if not isinstance(record_id, str):
+                raise ValueError("record_id must be a string")
+            rec_id_clean = record_id.strip()
+            if len(rec_id_clean) > 128 or (rec_id_clean and not re.fullmatch(r"[A-Za-z0-9._:-]+", rec_id_clean)):
+                raise ValueError(f"Invalid record_id format: {record_id!r}")
 
         self.queue_dir.mkdir(parents=True, exist_ok=True)
         entry_id = f"fb_{uuid.uuid4().hex[:12]}"
@@ -372,16 +547,27 @@ class FeedbackQueue:
                 (self.queue_dir / fname).unlink(missing_ok=True)
             raise
 
+        replaced = False
         with self._lock:
             root = self._load_root()
-            entry_el = StdET.SubElement(
-                root,
-                "entry",
-                attrib={
-                    "id": entry_id,
-                    "created-at": created_at,
-                },
-            )
+            if rec_id_clean:
+                for old_el in list(root.findall("entry")):
+                    if old_el.attrib.get("record-id") == rec_id_clean:
+                        for im in old_el.findall("./images/image"):
+                            old_fname = (im.text or "").strip()
+                            if old_fname:
+                                (self.queue_dir / old_fname).unlink(missing_ok=True)
+                        root.remove(old_el)
+                        replaced = True
+
+            attrs = {
+                "id": entry_id,
+                "created-at": created_at,
+                "source": src_clean,
+            }
+            if rec_id_clean:
+                attrs["record-id"] = rec_id_clean
+            entry_el = StdET.SubElement(root, "entry", attrib=attrs)
             if note.strip():
                 note_el = StdET.SubElement(entry_el, "note")
                 note_el.text = note.strip()[:500]
@@ -394,12 +580,17 @@ class FeedbackQueue:
             self._save_root(root)
 
             st = self.status()
-        return {
+        out = {
             "ok": True,
             "id": entry_id,
+            "source": src_clean,
+            "replaced": replaced,
             "queued_count": st["count"],
             "bundle_mb": st["bundle_mb"],
         }
+        if rec_id_clean:
+            out["record_id"] = rec_id_clean
+        return out
 
     def status(self) -> dict[str, Any]:
         with self._lock:
@@ -419,22 +610,54 @@ class FeedbackQueue:
                     if fpath.is_file():
                         total_bytes += fpath.stat().st_size
                 note_el = entry_el.find("note")
-                entries.append(
-                    {
-                        "id": eid,
-                        "created_at": entry_el.attrib.get("created-at", ""),
-                        "note": (note_el.text or "").strip() if note_el is not None else "",
-                        "images": imgs,
-                        "predicted": _el_to_item_dict(entry_el.find("predicted")),
-                        "corrected": _el_to_item_dict(entry_el.find("corrected")),
-                    }
-                )
+                entry_dict: dict[str, Any] = {
+                    "id": eid,
+                    "created_at": entry_el.attrib.get("created-at", ""),
+                    "source": entry_el.attrib.get("source", "local"),
+                    "note": (note_el.text or "").strip() if note_el is not None else "",
+                    "images": imgs,
+                    "predicted": _el_to_item_dict(entry_el.find("predicted")),
+                    "corrected": _el_to_item_dict(entry_el.find("corrected")),
+                }
+                rec_id = entry_el.attrib.get("record-id", "")
+                if rec_id:
+                    entry_dict["record_id"] = rec_id
+                if imgs:
+                    entry_dict["image_url"] = f"/v1/feedback/{eid}/image"
+                entries.append(entry_dict)
 
             return {
                 "count": len(entries),
                 "bundle_mb": round(total_bytes / 1_000_000, 3),
                 "entries": entries,
             }
+
+    def get_entry_image(self, entry_id: str, index: int = 0) -> bytes | None:
+        """Return sanitized JPEG bytes for a queued feedback entry image, or None if not found."""
+        if not entry_id or not re.fullmatch(r"[A-Za-z0-9_-]+", entry_id):
+            return None
+        if index < 0:
+            return None
+        with self._lock:
+            if not self.xml_path.is_file():
+                return None
+            root = self._load_root()
+            for entry_el in root.findall("entry"):
+                if entry_el.attrib.get("id") != entry_id:
+                    continue
+                imgs = [
+                    (im.text or "").strip()
+                    for im in entry_el.findall("./images/image")
+                    if (im.text or "").strip()
+                ]
+                if index >= len(imgs):
+                    return None
+                qdir = self.queue_dir.resolve()
+                fpath = (qdir / Path(imgs[index]).name).resolve()
+                if not fpath.is_relative_to(qdir) or not fpath.is_file():
+                    return None
+                return fpath.read_bytes()
+        return None
 
     def delete(self, entry_id: str) -> bool:
         return self.delete_many([entry_id]) > 0
@@ -625,6 +848,12 @@ class FeedbackQueue:
         entry_count: int,
         zip_bytes: bytes,
         timeout: float,
+        *,
+        public_key: str,
+        signature: str,
+        package_sha256: str,
+        pow_nonce: str,
+        pow_difficulty: int,
     ) -> dict[str, Any]:
         clean_url, initial_scheme = _validate_upload_url(url, resolve_dns=True)
         payload = json.dumps(
@@ -633,6 +862,11 @@ class FeedbackQueue:
                 "mime_type": "application/zip",
                 "entry_count": entry_count,
                 "zip_b64": base64.b64encode(zip_bytes).decode("ascii"),
+                "package_sha256": package_sha256,
+                "public_key": public_key,
+                "signature": signature,
+                "pow_nonce": pow_nonce,
+                "pow_difficulty": pow_difficulty,
             }
         ).encode("utf-8")
 
@@ -676,18 +910,30 @@ class FeedbackQueue:
 
         return parsed
 
+    def _update_submit_job(self, **updates: Any) -> None:
+        with self._submit_job_lock:
+            self._submit_job.update(updates)
+
+    def submit_status(self) -> dict[str, Any]:
+        with self._submit_job_lock:
+            return dict(self._submit_job)
+
     def submit(
         self,
         endpoint_url: str,
         timeout: float = 45.0,
         max_zip_bytes: int | None = None,
+        pow_difficulty: int = DEFAULT_POW_DIFFICULTY,
+        progress_cb: Callable[[dict[str, Any]], None] | None = None,
     ) -> dict[str, Any]:
-        """Upload queued feedback entries in <= max_zip_bytes ZIP batches, pruning each uploaded batch."""
+        """Upload queued feedback entries in <= max_zip_bytes ZIP batches with Ed25519 signature + PoW."""
         url, _ = _validate_upload_url(endpoint_url)
 
         with self._submit_lock:
             batches = self.build_bundle_batches(max_zip_bytes=max_zip_bytes)
             total_batches = len(batches)
+            total_entries = sum(len(ids) for ids, _ in batches)
+            priv_key, pub_b64 = ensure_feedback_keypair(self.state_dir)
             stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
             total_submitted = 0
@@ -700,17 +946,63 @@ class FeedbackQueue:
                     if total_batches == 1
                     else f"filament-feedback-{stamp}-part{batch_idx}of{total_batches}.zip"
                 )
+                base_progress = (batch_idx - 1) / max(1, total_batches)
+                batch_span = 1.0 / max(1, total_batches)
+                if progress_cb is not None:
+                    progress_cb(
+                        {
+                            "stage": "pow",
+                            "batch": batch_idx,
+                            "total_batches": total_batches,
+                            "submitted_count": total_submitted,
+                            "total_entries": total_entries,
+                            "progress": round(base_progress + batch_span * 0.1, 3),
+                        }
+                    )
+
+                pkg_sha256 = hashlib.sha256(zip_bytes).hexdigest()
+                signature = sign_package_sha256(priv_key, pkg_sha256)
+                pow_nonce = compute_pow(pkg_sha256, pub_b64, difficulty=pow_difficulty)
+
+                if progress_cb is not None:
+                    progress_cb(
+                        {
+                            "stage": "uploading",
+                            "batch": batch_idx,
+                            "total_batches": total_batches,
+                            "submitted_count": total_submitted,
+                            "total_entries": total_entries,
+                            "progress": round(base_progress + batch_span * 0.75, 3),
+                        }
+                    )
+
                 parsed = self._post_zip_batch(
                     url=url,
                     filename=filename,
                     entry_count=len(entry_ids),
                     zip_bytes=zip_bytes,
                     timeout=timeout,
+                    public_key=pub_b64,
+                    signature=signature,
+                    package_sha256=pkg_sha256,
+                    pow_nonce=pow_nonce,
+                    pow_difficulty=pow_difficulty,
                 )
                 responses.append(parsed)
                 total_submitted += len(entry_ids)
                 total_bytes += len(zip_bytes)
                 self.delete_many(entry_ids)
+                if progress_cb is not None:
+                    progress_cb(
+                        {
+                            "stage": "uploading",
+                            "batch": batch_idx,
+                            "total_batches": total_batches,
+                            "submitted_count": total_submitted,
+                            "total_entries": total_entries,
+                            "progress": round(batch_idx / max(1, total_batches), 3),
+                        }
+                    )
 
             with self._lock:
                 if not self.status()["count"]:
@@ -721,8 +1013,69 @@ class FeedbackQueue:
             "submitted_count": total_submitted,
             "batches_submitted": total_batches,
             "bundle_bytes": total_bytes,
+            "public_key": pub_b64,
             "server_response": responses[0] if len(responses) == 1 else responses,
         }
+
+    def start_submit_async(
+        self,
+        endpoint_url: str,
+        timeout: float = 45.0,
+        max_zip_bytes: int | None = None,
+        pow_difficulty: int = DEFAULT_POW_DIFFICULTY,
+    ) -> dict[str, Any]:
+        """Start background PoW + upload job and return immediate job status."""
+        _validate_upload_url(endpoint_url)
+        with self._lock:
+            st = self.status()
+            if not st["count"]:
+                raise ValueError("Feedback queue is empty")
+            total_entries = int(st["count"])
+
+        with self._submit_job_lock:
+            if self._submit_job.get("status") == "running":
+                return dict(self._submit_job)
+            job_id = f"sub_{uuid.uuid4().hex[:10]}"
+            self._submit_job = {
+                "id": job_id,
+                "status": "running",
+                "stage": "preparing",
+                "batch": 0,
+                "total_batches": 0,
+                "submitted_count": 0,
+                "total_entries": total_entries,
+                "progress": 0.0,
+                "error": "",
+                "result": None,
+            }
+            snapshot = dict(self._submit_job)
+
+        def _worker() -> None:
+            try:
+                res = self.submit(
+                    endpoint_url=endpoint_url,
+                    timeout=timeout,
+                    max_zip_bytes=max_zip_bytes,
+                    pow_difficulty=pow_difficulty,
+                    progress_cb=lambda info: self._update_submit_job(**info),
+                )
+                self._update_submit_job(
+                    status="completed",
+                    stage="done",
+                    submitted_count=res["submitted_count"],
+                    progress=1.0,
+                    error="",
+                    result=res,
+                )
+            except Exception as exc:
+                self._update_submit_job(
+                    status="failed",
+                    stage="error",
+                    error=str(exc),
+                )
+
+        threading.Thread(target=_worker, daemon=True).start()
+        return snapshot
 
 
 def _read_zip_member_capped(
@@ -755,16 +1108,36 @@ def _read_zip_member_capped(
     return b"".join(chunks)
 
 
+def _load_bundle_metadata(zpath: Path) -> dict[str, Any] | None:
+    """Load sidecar JSON metadata (<zip>.meta.json or <stem>.meta.json) if present."""
+    for cand in (
+        Path(f"{zpath}.meta.json"),
+        zpath.with_suffix(".meta.json"),
+    ):
+        if cand.is_file():
+            data = json.loads(cand.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                return data
+            raise ValueError(f"Metadata sidecar {cand.name} must be a JSON object")
+    return None
+
+
 def ingest_feedback_bundles(
     source: str | Path,
     dest_xml: str | Path = DATA_DIR / "annotations" / "feedback_verified.xml",
     dest_images_dir: str | Path = DATA_DIR / "feedback_verified",
+    *,
+    drop_keys: Iterable[str] | None = None,
+    min_pow_difficulty: int = MIN_POW_DIFFICULTY,
+    require_signature: bool = True,
 ) -> dict[str, Any]:
-    """Import downloaded feedback .zip bundles into a verified XML dataset (2x weight for training)."""
+    """Import downloaded feedback .zip bundles into verified training XML after verifying Ed25519 + PoW."""
     src = Path(source)
     zips = [src] if src.is_file() and src.suffix.lower() == ".zip" else sorted(src.glob("*.zip"))
     if not zips:
         raise FileNotFoundError(f"No .zip feedback bundles found at {src}")
+
+    drop_key_set = {k.strip() for k in (drop_keys or []) if k and k.strip()}
 
     dest_img_root = Path(dest_images_dir)
     dest_img_root.mkdir(parents=True, exist_ok=True)
@@ -779,6 +1152,10 @@ def ingest_feedback_bundles(
         for old_img_el in out_root.findall("./sample/image-path"):
             if old_img_el.text and old_img_el.text.strip().startswith("feedback_verified/"):
                 old_img_el.text = "data/" + old_img_el.text.strip()
+        if drop_key_set:
+            for existing_el in list(out_root.findall("sample")):
+                if existing_el.attrib.get("source-key", "") in drop_key_set:
+                    out_root.remove(existing_el)
     else:
         out_root = StdET.Element(
             "filament-dataset",
@@ -793,6 +1170,8 @@ def ingest_feedback_bundles(
     existing_ids = {s.attrib.get("id", "") for s in out_root.findall("sample")}
     imported_entries = 0
     imported_images = 0
+    rejected: list[dict[str, str]] = []
+    by_key: dict[str, dict[str, Any]] = {}
 
     from ..catalog.matcher import CatalogMatcher
     from ..cpu_tier.color_lab import classify_rgb_to_family
@@ -814,7 +1193,51 @@ def ingest_feedback_bundles(
         ocr_engine = None
 
     for zpath in zips:
-        with zipfile.ZipFile(zpath, "r") as zf:
+        zip_bytes = zpath.read_bytes()
+        try:
+            validate_feedback_zip_bytes(zip_bytes)
+        except Exception as exc:
+            rejected.append({"file": zpath.name, "reason": f"invalid_package_shape: {exc}"})
+            continue
+
+        pub_key = ""
+        if require_signature:
+            try:
+                meta = _load_bundle_metadata(zpath)
+            except Exception as exc:
+                rejected.append({"file": zpath.name, "reason": f"invalid_metadata: {exc}"})
+                continue
+            if meta is None:
+                rejected.append({"file": zpath.name, "reason": "missing_metadata_sidecar"})
+                continue
+
+            pub_key = str(meta.get("public_key") or "").strip()
+            sig_b64 = str(meta.get("signature") or "").strip()
+            actual_sha = hashlib.sha256(zip_bytes).hexdigest()
+            claimed_sha = str(meta.get("package_sha256") or actual_sha).strip().lower()
+            pow_nonce = str(meta.get("pow_nonce") or "")
+            raw_diff = meta.get("pow_difficulty")
+            pow_diff = raw_diff if isinstance(raw_diff, int) and not isinstance(raw_diff, bool) else -1
+
+            if claimed_sha != actual_sha:
+                rejected.append({"file": zpath.name, "reason": "package_sha256_mismatch"})
+                continue
+            if not verify_package_signature(pub_key, actual_sha, sig_b64):
+                rejected.append({"file": zpath.name, "reason": "invalid_signature"})
+                continue
+            if pow_diff < min_pow_difficulty or not verify_pow(actual_sha, pub_key, pow_nonce, pow_diff):
+                rejected.append({"file": zpath.name, "reason": "invalid_proof_of_work"})
+                continue
+
+            key_bucket = by_key.setdefault(
+                pub_key, {"packages": 0, "entries": 0, "dropped": pub_key in drop_key_set}
+            )
+            key_bucket["packages"] += 1
+            if pub_key in drop_key_set:
+                rejected.append({"file": zpath.name, "reason": "dropped_public_key"})
+                continue
+
+        with zipfile.ZipFile(io.BytesIO(zip_bytes), "r") as zf:
             names = set(zf.namelist())
             if "pending_feedback.xml" not in names:
                 continue
@@ -946,9 +1369,13 @@ def ingest_feedback_bundles(
                     sample_el = sample.to_element()
                     sample_el.attrib["source"] = "user_feedback"
                     sample_el.attrib["weight"] = "2.0"
+                    if pub_key:
+                        sample_el.attrib["source-key"] = pub_key
                     out_root.append(sample_el)
                     existing_ids.add(sid)
                 imported_entries += 1
+                if pub_key and pub_key in by_key:
+                    by_key[pub_key]["entries"] += 1
 
     out_root.attrib["count"] = str(len(out_root.findall("sample")))
     write_xml_atomic(dest_xml_path, out_root)
@@ -956,5 +1383,8 @@ def ingest_feedback_bundles(
         "zips_processed": len(zips),
         "imported_entries": imported_entries,
         "imported_images": imported_images,
+        "rejected_count": len(rejected),
+        "rejected": rejected,
+        "by_key": by_key,
         "dest_xml": str(dest_xml_path),
     }

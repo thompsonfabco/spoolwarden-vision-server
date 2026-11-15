@@ -44,6 +44,7 @@ def standalone_server(tmp_path, monkeypatch):
         tier="cpu",
         feedback_opt_in=False,
         feedback_dir=fb_dir,
+        pow_difficulty=8,
     )
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -107,7 +108,7 @@ def test_health_and_cors_preflight(standalone_server):
     assert "access-control-allow-origin" not in hdrs
     payload = json.loads(raw.decode("utf-8"))
     assert payload["service"] == "filament-vision-server"
-    assert payload["module_version"] == "0.2.4"
+    assert payload["module_version"] == "0.3.0"
     assert payload["status"] == "ok"
     assert payload["tiers"]["cpu"]["usable"] is True
 
@@ -340,7 +341,7 @@ def test_feedback_multi_batch_splitting(standalone_server, monkeypatch):
         st_sub, _, raw_sub = _http_request(
             f"{base_url}/v1/feedback/submit",
             method="POST",
-            payload={"api_version": "1.0", "endpoint": f"http://{m_host}:{m_port}/exec"},
+            payload={"api_version": "1.1", "endpoint": f"http://{m_host}:{m_port}/exec", "sync": True},
         )
         assert st_sub == 200
         sub_res = json.loads(raw_sub.decode("utf-8"))
@@ -622,12 +623,12 @@ def test_feedback_fail_closed_delete_many_and_ingest_empty_xml(tmp_path):
     try:
         h, p = srv.server_address[:2]
         with pytest.raises(RuntimeError, match="non-JSON"):
-            q.submit(f"http://{h}:{p}/exec")
+            q.submit(f"http://{h}:{p}/exec", pow_difficulty=8)
         assert q.status()["count"] == 1
 
         mode["html"] = False
         with pytest.raises(RuntimeError, match="drive_quota_exceeded"):
-            q.submit(f"http://{h}:{p}/exec")
+            q.submit(f"http://{h}:{p}/exec", pow_difficulty=8)
         assert q.status()["count"] == 1
     finally:
         srv.shutdown()
@@ -653,7 +654,9 @@ def test_feedback_fail_closed_delete_many_and_ingest_empty_xml(tmp_path):
 
     dest_xml = tmp_path / "data" / "annotations" / "verified.xml"
     dest_imgs = tmp_path / "data" / "feedback_verified"
-    ingested = feedback_mod.ingest_feedback_bundles(patched_zip, dest_xml=dest_xml, dest_images_dir=dest_imgs)
+    ingested = feedback_mod.ingest_feedback_bundles(
+        patched_zip, dest_xml=dest_xml, dest_images_dir=dest_imgs, require_signature=False
+    )
     assert ingested["imported_entries"] == 1
     assert ingested["imported_images"] == 1
     assert "feedback_verified/" in dest_xml.read_text(encoding="utf-8")
@@ -740,6 +743,7 @@ def test_decompression_bomb_and_zip_ingest_limits(standalone_server, tmp_path, m
             zip_path,
             dest_xml=tmp_path / "out.xml",
             dest_images_dir=tmp_path / "imgs",
+            require_signature=False,
         )
 
 
@@ -1085,7 +1089,9 @@ def test_config_cli_validation_revise_and_updater_hardening(standalone_server, t
 
     fb_dest_xml = tmp_path / "data" / "annotations" / "feedback_verified.xml"
     fb_dest_imgs = tmp_path / "data" / "feedback_verified"
-    ing = feedback_mod.ingest_feedback_bundles(fb_zip, dest_xml=fb_dest_xml, dest_images_dir=fb_dest_imgs)
+    ing = feedback_mod.ingest_feedback_bundles(
+        fb_zip, dest_xml=fb_dest_xml, dest_images_dir=fb_dest_imgs, require_signature=False
+    )
     assert ing["imported_entries"] == 1
     out_text = fb_dest_xml.read_text(encoding="utf-8")
     assert "<filament-dataset" in out_text
@@ -1110,3 +1116,277 @@ def test_config_cli_validation_revise_and_updater_hardening(standalone_server, t
     assert res_upd["new_feedback_samples"] == 1
     assert "skipped_reason" in res_upd
     assert ET.parse(upd_xml).getroot().attrib.get("last-trained-samples") == "1"
+
+
+def test_section14_hub_integration_contract(tmp_path, monkeypatch):
+    """Contract tests for KIT-INTEGRATION-INSTRUCTIONS.md Section 14 (items 1-10)."""
+    import hashlib
+    import http.server
+    import time
+    import xml.etree.ElementTree as ET
+
+    state_dir = tmp_path / "external_state"
+    cfg_path = state_dir / "service_config.xml"
+    fb_dir = state_dir / "feedback_queue"
+    monkeypatch.setattr(daemon_mod, "DEFAULT_SERVICE_CONFIG_XML", cfg_path)
+
+    received_uploads = []
+
+    class FakeIntakeHandler(http.server.BaseHTTPRequestHandler):
+        def log_message(self, format, *args):
+            return
+
+        def do_POST(self):
+            ln = int(self.headers.get("Content-Length", "0"))
+            data = json.loads(self.rfile.read(ln).decode("utf-8"))
+            received_uploads.append(data)
+            resp = json.dumps({"ok": True, "file_id": f"fake_{len(received_uploads)}"}).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(resp)))
+            self.end_headers()
+            self.wfile.write(resp)
+
+    intake_srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), FakeIntakeHandler)
+    threading.Thread(target=intake_srv.serve_forever, daemon=True).start()
+    ihost, iport = intake_srv.server_address[:2]
+    fake_endpoint = f"http://{ihost}:{iport}/exec"
+
+    token = "hub-secret-token-123"
+    srv = daemon_mod.start_daemon(
+        host="127.0.0.1",
+        port=0,
+        tier="cpu",
+        auth_token=token,
+        feedback_opt_in=False,
+        feedback_endpoint=fake_endpoint,
+        feedback_dir=fb_dir,
+        pow_difficulty=8,
+    )
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    host, port = srv.server_address[:2]
+    base_url = f"http://{host}:{port}"
+    auth_hdr = {"Authorization": f"Bearer {token}"}
+
+    try:
+        # 1. /v1/health capabilities, feedback state, and accelerator per tier
+        st_h, _, raw_h = _http_request(f"{base_url}/v1/health")
+        assert st_h == 200
+        health = json.loads(raw_h.decode("utf-8"))
+        assert health["api_version"] == "1.1"
+        assert health["capabilities"]["feedback"] is True
+        assert health["feedback"] == {
+            "opt_in": False,
+            "endpoint_configured": True,
+            "count": 0,
+            "bundle_mb": 0.0,
+        }
+        assert health["tiers"]["cpu"]["accelerator"] in ("cpu", "cuda", "directml", "none")
+        assert health["tiers"]["gpu"]["accelerator"] in ("cuda", "none")
+
+        # 2. All feedback endpoints require bearer token
+        for ep, method in (
+            ("/v1/feedback", "GET"),
+            ("/v1/feedback/submit", "GET"),
+            ("/v1/feedback/fb_missing/image", "GET"),
+            ("/v1/feedback/bundle.zip", "GET"),
+            ("/v1/feedback", "POST"),
+            ("/v1/feedback/submit", "POST"),
+        ):
+            st_u, _, _ = _http_request_any(
+                f"{base_url}{ep}",
+                method=method,
+                payload={"api_version": "1.1"} if method == "POST" else None,
+            )
+            assert st_u == 401, f"Expected 401 on {method} {ep}, got {st_u}"
+
+        # 3. Opt-in via /v1/config creates Ed25519 key pair in state_dir
+        st_c, _, _ = _http_request_any(
+            f"{base_url}/v1/config",
+            method="POST",
+            extra_headers=auth_hdr,
+            payload={"api_version": "1.1", "feedback_opt_in": True, "feedback_endpoint": fake_endpoint},
+        )
+        assert st_c == 200
+        key_file = state_dir / feedback_mod.DEFAULT_KEY_FILENAME
+        assert key_file.is_file()
+
+        # 4. POST /v1/feedback source + record_id deduplication/replacement
+        jpg_b64 = base64.b64encode(_make_sample_spool_jpeg()).decode("ascii")
+        st_bad_src, _, _ = _http_request_any(
+            f"{base_url}/v1/feedback",
+            method="POST",
+            extra_headers=auth_hdr,
+            payload={
+                "api_version": "1.1",
+                "images_b64": [jpg_b64],
+                "predicted": {"vendor": "Unknown", "material": "PLA"},
+                "corrected": {"vendor": "Bambu Lab", "material": "PLA"},
+                "source": "invalid_src",
+            },
+        )
+        assert st_bad_src == 400
+
+        st_fb1, _, raw_fb1 = _http_request_any(
+            f"{base_url}/v1/feedback",
+            method="POST",
+            extra_headers=auth_hdr,
+            payload={
+                "api_version": "1.1",
+                "images_b64": [jpg_b64],
+                "predicted": {"vendor": "Unknown", "material": "PLA"},
+                "corrected": {"vendor": "SUNLU", "material": "PLA", "color_name": "Black"},
+                "note": "first note",
+                "source": "cloud",
+                "record_id": "hub-rec-42",
+            },
+        )
+        assert st_fb1 == 200
+        fb1 = json.loads(raw_fb1.decode("utf-8"))
+        assert fb1["source"] == "cloud"
+        assert fb1["record_id"] == "hub-rec-42"
+        assert fb1["replaced"] is False
+        assert fb1["queued_count"] == 1
+
+        # Second post with same record_id replaces the first entry
+        st_fb2, _, raw_fb2 = _http_request_any(
+            f"{base_url}/v1/feedback",
+            method="POST",
+            extra_headers=auth_hdr,
+            payload={
+                "api_version": "1.1",
+                "images_b64": [jpg_b64],
+                "predicted": {"vendor": "Unknown", "material": "PLA"},
+                "corrected": {"vendor": "Prusament", "material": "PETG", "color_name": "Orange"},
+                "note": "updated note",
+                "source": "cloud",
+                "record_id": "hub-rec-42",
+            },
+        )
+        assert st_fb2 == 200
+        fb2 = json.loads(raw_fb2.decode("utf-8"))
+        assert fb2["replaced"] is True
+        assert fb2["queued_count"] == 1
+
+        # 5. GET /v1/feedback & GET /v1/feedback/<id>/image
+        st_list, _, raw_list = _http_request_any(f"{base_url}/v1/feedback", extra_headers=auth_hdr)
+        assert st_list == 200
+        fb_list = json.loads(raw_list.decode("utf-8"))
+        assert fb_list["count"] == 1
+        entry = fb_list["entries"][0]
+        assert entry["id"] == fb2["id"]
+        assert entry["source"] == "cloud"
+        assert entry["record_id"] == "hub-rec-42"
+        assert entry["corrected"]["vendor"] == "Prusament"
+        assert entry["note"] == "updated note"
+        assert entry["image_url"] == f"/v1/feedback/{entry['id']}/image"
+
+        st_img, _, raw_img = _http_request_any(f"{base_url}{entry['image_url']}", extra_headers=auth_hdr)
+        assert st_img == 200
+        assert raw_img.startswith(b"\xff\xd8\xff")
+
+        # 6. Non-loopback caller sending endpoint in POST /v1/feedback/submit must be refused (403)
+        orig_is_loopback = daemon_mod._is_loopback_client
+        monkeypatch.setattr(daemon_mod, "_is_loopback_client", lambda ip: False)
+        st_nonlb, _, raw_nonlb = _http_request_any(
+            f"{base_url}/v1/feedback/submit",
+            method="POST",
+            extra_headers=auth_hdr,
+            payload={"api_version": "1.1", "endpoint": fake_endpoint},
+        )
+        assert st_nonlb == 403
+        assert json.loads(raw_nonlb.decode("utf-8"))["code"] == "forbidden_endpoint"
+        monkeypatch.setattr(daemon_mod, "_is_loopback_client", orig_is_loopback)
+
+        # 7. Background submit (202) + polling GET /v1/feedback/submit + Ed25519 & PoW verification
+        st_sub, _, raw_sub = _http_request_any(
+            f"{base_url}/v1/feedback/submit",
+            method="POST",
+            extra_headers=auth_hdr,
+            payload={"api_version": "1.1"},
+        )
+        assert st_sub == 202
+        job = json.loads(raw_sub.decode("utf-8"))
+        assert job["status"] in ("running", "completed")
+
+        deadline = time.monotonic() + 10.0
+        while job["status"] == "running" and time.monotonic() < deadline:
+            time.sleep(0.05)
+            st_poll, _, raw_poll = _http_request_any(f"{base_url}/v1/feedback/submit", extra_headers=auth_hdr)
+            assert st_poll == 200
+            job = json.loads(raw_poll.decode("utf-8"))
+        assert job["status"] == "completed"
+        assert job["result"]["submitted_count"] == 1
+        assert len(received_uploads) == 1
+
+        up = received_uploads[0]
+        zip_bytes = base64.b64decode(up["zip_b64"])
+        actual_sha = hashlib.sha256(zip_bytes).hexdigest()
+        assert up["package_sha256"] == actual_sha
+        assert feedback_mod.verify_package_signature(up["public_key"], actual_sha, up["signature"])
+        assert feedback_mod.verify_pow(actual_sha, up["public_key"], up["pow_nonce"], up["pow_difficulty"])
+        feedback_mod.validate_feedback_zip_bytes(zip_bytes)
+
+        # 8. ingest-feedback verification: valid accepted, tampered rejected, drop_keys drops key
+        quarantine_dir = tmp_path / "quarantine"
+        quarantine_dir.mkdir()
+        good_zip = quarantine_dir / "good.zip"
+        good_zip.write_bytes(zip_bytes)
+        (quarantine_dir / "good.zip.meta.json").write_text(
+            json.dumps(
+                {
+                    "package_sha256": up["package_sha256"],
+                    "public_key": up["public_key"],
+                    "signature": up["signature"],
+                    "pow_nonce": up["pow_nonce"],
+                    "pow_difficulty": up["pow_difficulty"],
+                }
+            ),
+            encoding="utf-8",
+        )
+        bad_zip = quarantine_dir / "bad_sig.zip"
+        bad_zip.write_bytes(zip_bytes)
+        (quarantine_dir / "bad_sig.zip.meta.json").write_text(
+            json.dumps(
+                {
+                    "package_sha256": up["package_sha256"],
+                    "public_key": up["public_key"],
+                    "signature": base64.b64encode(b"\x00" * 64).decode("ascii"),
+                    "pow_nonce": up["pow_nonce"],
+                    "pow_difficulty": up["pow_difficulty"],
+                }
+            ),
+            encoding="utf-8",
+        )
+        missing_meta_zip = quarantine_dir / "no_meta.zip"
+        missing_meta_zip.write_bytes(zip_bytes)
+
+        dest_xml = tmp_path / "data" / "annotations" / "verified.xml"
+        dest_imgs = tmp_path / "data" / "feedback_verified"
+        ing_res = feedback_mod.ingest_feedback_bundles(
+            quarantine_dir,
+            dest_xml=dest_xml,
+            dest_images_dir=dest_imgs,
+            min_pow_difficulty=8,
+        )
+        assert ing_res["imported_entries"] == 1
+        assert ing_res["rejected_count"] == 2
+        assert up["public_key"] in ing_res["by_key"]
+
+        # Dropping the key removes its samples and skips future packages from that key
+        drop_res = feedback_mod.ingest_feedback_bundles(
+            good_zip,
+            dest_xml=dest_xml,
+            dest_images_dir=dest_imgs,
+            drop_keys=[up["public_key"]],
+            min_pow_difficulty=8,
+        )
+        assert drop_res["imported_entries"] == 0
+        assert drop_res["rejected_count"] == 1
+        assert ET.parse(dest_xml).getroot().attrib["count"] == "0"
+    finally:
+        srv.shutdown()
+        srv.server_close()
+        intake_srv.shutdown()
+        intake_srv.server_close()
+
