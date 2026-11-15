@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Standalone Linux installer for filament-vision-server (v0.3.0)
+# Standalone Linux installer for filament-vision-server (v0.3.1)
 # Usage:
 #   sudo bash install/install.sh [options]
 # Options:
@@ -25,7 +25,7 @@ PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 TIER="auto"
 PORT="7920"
 BIND="127.0.0.1"
-SERVICE_USER="${SUDO_USER:-$(id -un)}"
+SERVICE_USER="filament-vision-server"
 PREFIX="/opt/filament-vision-server"
 STATE_DIR=""
 ASSETS=""
@@ -199,6 +199,22 @@ if [[ "${UNINSTALL}" -eq 1 ]]; then
       rmdir /etc/filament-vision-server 2>/dev/null || true
     fi
     echo "[install.sh] Preserved state folder ${STATE_DIR} (config, token, keys, and ${WAITING_COUNT} waiting correction(s)). Re-run with --uninstall --purge to remove it."
+  fi
+  for acct_marker in /etc/filament-vision-server/.created_service_account "${STATE_DIR}/.created_service_account"; do
+    if [[ -f "${acct_marker}" ]]; then
+      REM_USER="$(sed -n 's/^user=//p' "${acct_marker}" | head -n1)"
+      REM_GROUP="$(sed -n 's/^group=//p' "${acct_marker}" | head -n1)"
+      rm -f "${acct_marker}"
+      if [[ -n "${REM_USER}" && "${REM_USER}" != "root" ]] && id -u "${REM_USER}" >/dev/null 2>&1; then
+        userdel "${REM_USER}" >/dev/null 2>&1 || true
+      fi
+      if [[ -n "${REM_GROUP}" && "${REM_GROUP}" != "root" ]] && getent group "${REM_GROUP}" >/dev/null 2>&1; then
+        groupdel "${REM_GROUP}" >/dev/null 2>&1 || true
+      fi
+    fi
+  done
+  if [[ -d /etc/filament-vision-server ]]; then
+    rmdir /etc/filament-vision-server 2>/dev/null || true
   fi
   echo "[install.sh] Uninstalled cleanly."
   exit 0
@@ -567,12 +583,29 @@ CREATED_PREFIX=0
 if [[ ! -d "${PREFIX}" ]]; then
   CREATED_PREFIX=1
 fi
+CREATED_UNIT=0
+CREATED_SVC_USER=""
+CREATED_SVC_GROUP=""
 
 cleanup_on_exit() {
   local rc=$?
-  if [[ "${rc}" -ne 0 && "${HAD_COMPLETE_INSTALL}" -eq 0 && "${CREATED_PREFIX}" -eq 1 ]]; then
-    echo "[install.sh] Install failed (exit ${rc}); cleaning incomplete ${PREFIX}..." >&2
-    rm -rf "${PREFIX}" || true
+  if [[ "${rc}" -ne 0 && "${HAD_COMPLETE_INSTALL}" -eq 0 ]]; then
+    echo "[install.sh] Install failed (exit ${rc}); running failure cleanup..." >&2
+    if [[ "${CREATED_UNIT}" -eq 1 ]] && command -v systemctl >/dev/null 2>&1; then
+      systemctl stop "${SERVICE_NAME}.service" >/dev/null 2>&1 || true
+      systemctl disable "${SERVICE_NAME}.service" >/dev/null 2>&1 || true
+      rm -f "${SYSTEMD_UNIT_PATH}" || true
+      systemctl daemon-reload >/dev/null 2>&1 || true
+    fi
+    if [[ -n "${CREATED_SVC_USER}" && "${CREATED_SVC_USER}" != "root" ]] && id -u "${CREATED_SVC_USER}" >/dev/null 2>&1; then
+      userdel "${CREATED_SVC_USER}" >/dev/null 2>&1 || true
+    fi
+    if [[ -n "${CREATED_SVC_GROUP}" && "${CREATED_SVC_GROUP}" != "root" ]] && getent group "${CREATED_SVC_GROUP}" >/dev/null 2>&1; then
+      groupdel "${CREATED_SVC_GROUP}" >/dev/null 2>&1 || true
+    fi
+    if [[ "${CREATED_PREFIX}" -eq 1 && -d "${PREFIX}" ]]; then
+      rm -rf "${PREFIX}" || true
+    fi
   fi
 }
 trap cleanup_on_exit EXIT
@@ -846,10 +879,20 @@ EOF
 chmod +x "${PREFIX}/stop_server.sh"
 
 if [[ "$(id -u)" -eq 0 ]]; then
-  if ! id -u "${SERVICE_USER}" >/dev/null 2>&1; then
-    useradd --system --no-create-home --shell /usr/sbin/nologin "${SERVICE_USER}" || true
+  if ! getent group "${SERVICE_USER}" >/dev/null 2>&1; then
+    groupadd --system "${SERVICE_USER}"
+    CREATED_SVC_GROUP="${SERVICE_USER}"
   fi
-  chown -R "${SERVICE_USER}:${SERVICE_USER}" "${PREFIX}" "${STATE_DIR}" || true
+  if ! id -u "${SERVICE_USER}" >/dev/null 2>&1; then
+    useradd --system --gid "${SERVICE_USER}" --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin "${SERVICE_USER}"
+    CREATED_SVC_USER="${SERVICE_USER}"
+  fi
+  if [[ -n "${CREATED_SVC_USER}" || -n "${CREATED_SVC_GROUP}" ]]; then
+    mkdir -p /etc/filament-vision-server
+    printf 'user=%s\ngroup=%s\n' "${CREATED_SVC_USER}" "${CREATED_SVC_GROUP}" > /etc/filament-vision-server/.created_service_account
+    printf 'user=%s\ngroup=%s\n' "${CREATED_SVC_USER}" "${CREATED_SVC_GROUP}" > "${STATE_DIR}/.created_service_account"
+  fi
+  chown -R "${SERVICE_USER}:${SERVICE_USER}" "${STATE_DIR}"
   chmod 0750 "${STATE_DIR}" 2>/dev/null || true
   if [[ -d /usr/local/bin ]]; then
     for bin_name in filament-vision-server spool-server; do
@@ -882,21 +925,33 @@ txt = pathlib.Path(os.environ["FVS_UNIT_SRC"]).read_text(encoding="utf-8")
 for k, envk in (("__PREFIX__", "FVS_UNIT_PREFIX"), ("__STATE_DIR__", "FVS_UNIT_STATE_DIR"), ("__SERVICE_USER__", "FVS_UNIT_USER"), ("__BIND__", "FVS_UNIT_BIND"), ("__PORT__", "FVS_UNIT_PORT"), ("__TIER__", "FVS_UNIT_TIER")):
     txt = txt.replace(k, os.environ[envk])
 pathlib.Path(os.environ["FVS_UNIT_DST"]).write_text(txt, encoding="utf-8")'
+  CREATED_UNIT=1
   systemctl daemon-reload
   systemctl enable "${SERVICE_NAME}.service"
   systemctl restart "${SERVICE_NAME}.service"
 
-  echo "[install.sh] Waiting for ${HEALTH_URL}..."
+  WAIT_SECONDS=90
+  if [[ "${WITH_GPU}" -eq 1 || "${TIER}" == "gpu" ]]; then
+    WAIT_SECONDS=240
+  fi
+  echo "[install.sh] Waiting up to ${WAIT_SECONDS}s for ${HEALTH_URL}..."
   READY=0
-  for _ in $(seq 1 30); do
+  for elapsed in $(seq 1 "${WAIT_SECONDS}"); do
     if "${VENV_PY}" -c "import urllib.request; urllib.request.urlopen('${HEALTH_URL}', timeout=2).read()" >/dev/null 2>&1; then
       READY=1
       break
     fi
+    if systemctl is-failed --quiet "${SERVICE_NAME}.service"; then
+      echo "[install.sh] ERROR: ${SERVICE_NAME}.service entered failed state after ${elapsed}s." >&2
+      break
+    fi
+    if (( elapsed % 10 == 0 )); then
+      echo "[install.sh] Still waiting for ${HEALTH_URL} (${elapsed}s/${WAIT_SECONDS}s)..."
+    fi
     sleep 1
   done
   if [[ "${READY}" -ne 1 ]]; then
-    echo "[install.sh] ERROR: Service did not become healthy at ${HEALTH_URL} within 30s." >&2
+    echo "[install.sh] ERROR: Service did not become healthy at ${HEALTH_URL} within ${WAIT_SECONDS}s." >&2
     journalctl -u "${SERVICE_NAME}.service" -n 40 --no-pager >&2 || true
     exit 1
   fi

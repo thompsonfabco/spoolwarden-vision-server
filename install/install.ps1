@@ -718,7 +718,7 @@ try {
     }
 }
 
-Set-Content -Path (Join-Path $TargetPrefix ".installed") -Value "0.3.0" -Encoding ASCII
+Set-Content -Path (Join-Path $TargetPrefix ".installed") -Value "0.3.1" -Encoding ASCII
 
 if ($RegisterStartup) {
     try {

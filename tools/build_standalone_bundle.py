@@ -28,7 +28,7 @@ if str(TOOLS_DIR) not in sys.path:
 
 from sign_release import generate_sha256sums, sign, verify  # noqa: E402
 
-DEFAULT_VERSION = "0.3.0"
+DEFAULT_VERSION = "0.3.1"
 
 COMMON_ROOT_FILES = (
     "pyproject.toml",

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "filament-vision-server"
-version = "0.3.0"
+version = "0.3.1"
 description = "Standalone cross-platform 3D printer filament spool recognition server with built-in Web UI and HTTP API v1"
 readme = "README.md"
 license = {text = "GPL-3.0-or-later"}

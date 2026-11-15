@@ -108,7 +108,7 @@ def test_health_and_cors_preflight(standalone_server):
     assert "access-control-allow-origin" not in hdrs
     payload = json.loads(raw.decode("utf-8"))
     assert payload["service"] == "filament-vision-server"
-    assert payload["module_version"] == "0.3.0"
+    assert payload["module_version"] == "0.3.1"
     assert payload["status"] == "ok"
     assert payload["tiers"]["cpu"]["usable"] is True
 
