@@ -107,7 +107,7 @@ def test_health_and_cors_preflight(standalone_server):
     assert "access-control-allow-origin" not in hdrs
     payload = json.loads(raw.decode("utf-8"))
     assert payload["service"] == "filament-vision-server"
-    assert payload["module_version"] == "0.2.3"
+    assert payload["module_version"] == "0.2.4"
     assert payload["status"] == "ok"
     assert payload["tiers"]["cpu"]["usable"] is True
 
@@ -142,7 +142,7 @@ def test_read_and_revise_cpu_tier(standalone_server):
     first = data["items"][0]
     assert "vendor" in first and "material" in first and "diameter" in first
     assert data["api_version"] == "1.1"
-    assert data["reader"]["module_version"] == "0.2.3"
+    assert data["reader"]["module_version"] == "0.2.4"
 
     rev_status, _, rev_raw = _http_request(
         f"{base_url}/v1/revise",
@@ -848,3 +848,265 @@ def test_ipv6_bind_chunked_encoding_and_api_contract_doc(standalone_server):
     doc_path = Path(__file__).resolve().parent.parent / "docs" / "api-contract.md"
     assert doc_path.is_file()
     assert "api_version" in doc_path.read_text(encoding="utf-8")
+
+
+def test_web_ui_and_playground_scripts_pass_node_check(tmp_path):
+    import re
+    import shutil
+    import subprocess
+    from filament_vision_server.service.playground_ui import PLAYGROUND_HTML
+    from filament_vision_server.service.web_ui import STANDALONE_WEB_UI_HTML
+
+    node_bin = shutil.which("node")
+    assert node_bin is not None, "Node.js is required to syntax-check Web UI and Playground JS"
+
+    for name, html in (("web_ui", STANDALONE_WEB_UI_HTML), ("playground_ui", PLAYGROUND_HTML)):
+        scripts = re.findall(r"<script[^>]*>(.*?)</script>", html, flags=re.DOTALL | re.IGNORECASE)
+        assert scripts, f"No <script> block found in {name}"
+        for idx, js in enumerate(scripts):
+            js_file = tmp_path / f"{name}_{idx}.js"
+            js_file.write_text(js, encoding="utf-8")
+            proc = subprocess.run([node_bin, "--check", str(js_file)], capture_output=True, text=True, check=False)
+            assert proc.returncode == 0, f"{name} script[{idx}] failed node --check:\n{proc.stderr}\n{proc.stdout}"
+
+    assert r"\s*" in STANDALONE_WEB_UI_HTML
+    assert r"\d+" in STANDALONE_WEB_UI_HTML
+    assert r'join("\n")' in STANDALONE_WEB_UI_HTML
+    assert r"function csvCell" in STANDALONE_WEB_UI_HTML
+    assert r"/^[=+\-@\t\r]/.test(s)" in STANDALONE_WEB_UI_HTML
+    assert 'api_version: "1.1"' in STANDALONE_WEB_UI_HTML
+    assert "escapeHtml" in STANDALONE_WEB_UI_HTML
+    assert "pgAuthHeaders" in PLAYGROUND_HTML
+    assert "sessionStorage" in PLAYGROUND_HTML
+
+
+def test_xml_io_matcher_color_lab_and_pipelines(tmp_path, monkeypatch):
+    import sys
+    import xml.etree.ElementTree as ET
+    import numpy as np
+    from filament_vision_server import xml_io as xml_io_mod
+    from filament_vision_server.catalog.library_sync import normalize_bed_range
+    from filament_vision_server.catalog.matcher import CatalogMatcher
+    from filament_vision_server.cpu_tier.color_lab import extract_filament_color
+    from filament_vision_server.cpu_tier.pipeline import apply_note_to_item, merge_prediction_item
+    from filament_vision_server.data_engine.auto_labeler import parse_ocr_heuristic
+    from filament_vision_server.evaluation.benchmark import _eval_samples
+
+    assert xml_io_mod.parse_temp_range("215") == (215, 215)
+    assert xml_io_mod.parse_temp_range("190\u2013220") == (190, 220)
+    assert xml_io_mod.parse_temp_range("50-60") == (50, 60)
+
+    zero_item = xml_io_mod.FilamentItem(vendor="Prusament", material="PLA", net_grams=0, tare_grams=0)
+    roundtrip = xml_io_mod.FilamentItem.from_element(zero_item.to_element())
+    assert roundtrip.net_grams == 0
+    assert roundtrip.tare_grams == 0
+
+    atomic_target = tmp_path / "atomic.xml"
+    xml_io_mod.write_xml_atomic(atomic_target, ET.Element("root"))
+    assert atomic_target.is_file()
+    assert [p for p in tmp_path.iterdir() if p.name != "atomic.xml"] == []
+
+    fake_prefix = tmp_path / "prefix"
+    (fake_prefix / "configs").mkdir(parents=True)
+    (fake_prefix / "data" / "catalog").mkdir(parents=True)
+    monkeypatch.delenv("FILAMENT_VISION_SERVER_HOME", raising=False)
+    monkeypatch.delenv("FILAMENT_KIT_VISION_HOME", raising=False)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(xml_io_mod, "__file__", str(tmp_path / "site-packages" / "pkg" / "xml_io.py"))
+    monkeypatch.setattr(sys, "prefix", str(fake_prefix / ".venv"))
+    monkeypatch.setattr(sys, "executable", str(fake_prefix / ".venv" / "Scripts" / "python.exe"))
+    assert xml_io_mod._detect_project_root().resolve() == fake_prefix.resolve()
+
+    matcher = CatalogMatcher()
+    assert matcher.normalize_material("clean build plate ABS") == "ABS"
+    assert matcher.normalize_material("display casing PETG") == "PETG"
+
+    blank = np.zeros((160, 160, 3), dtype=np.uint8)
+    item_prof, _ = parse_ocr_heuristic(["profile configuration guide"], blank, matcher)
+    assert item_prof.vendor == "Unknown"
+
+    petg_item = xml_io_mod.FilamentItem(
+        vendor="Prusament",
+        material="PETG",
+        line="PETG",
+        nozzle_range="190-230",
+        estimates=["tare"],
+    )
+    matcher.enrich_item(petg_item)
+    assert "tare" not in petg_item.estimates
+    assert petg_item.nozzle_range != "190-230"
+
+    assert normalize_bed_range("60-80°C") == "60-80"
+    assert normalize_bed_range("70") == "70-70"
+    assert normalize_bed_range("unparseable") == "45-60"
+    cat_root = ET.parse(Path(__file__).resolve().parent.parent / "data" / "catalog" / "filament_catalog.xml").getroot()
+    import re
+    bad_beds = [p.attrib.get("bed-range") for p in cat_root.findall(".//product") if not re.fullmatch(r"\d+-\d+", p.attrib.get("bed-range", ""))]
+    assert bad_beds == []
+
+    rainbow = np.zeros((160, 160, 3), dtype=np.uint8)
+    rainbow[:, :53] = (20, 20, 235)
+    rainbow[:, 53:106] = (20, 220, 20)
+    rainbow[:, 106:] = (235, 30, 20)
+    _, fam, _ = extract_filament_color(rainbow, is_spool_crop=False)
+    assert fam == "Multi-color/Rainbow"
+
+    merged_list = [xml_io_mod.FilamentItem(vendor="Unknown", material="PLA", line="PLA", net_grams=0, nozzle_range="190-230")]
+    second = xml_io_mod.FilamentItem(
+        vendor="Polymaker",
+        material="PLA",
+        line="PolyLite PLA",
+        net_grams=1000,
+        nozzle_range="215-215",
+        confidence=0.92,
+    )
+    merge_prediction_item(merged_list, second, photo_index=1, matcher=matcher)
+    assert merged_list[0].vendor == "Polymaker"
+    assert merged_list[0].line == "PolyLite PLA"
+    assert merged_list[0].photos == [0, 1]
+
+    apply_note_to_item(merged_list[0], "2.85mm Silk PETG", matcher)
+    assert merged_list[0].diameter == 2.85
+    assert merged_list[0].material == "PETG"
+
+    empty_eval = _eval_samples(
+        [xml_io_mod.AnnotatedSample(sample_id="missing_1", image_path="does_not_exist_12345.jpg", item=merged_list[0])],
+        predictor=None,
+        tier_name="cpu",
+    )
+    assert empty_eval["samples"] == 0
+    assert empty_eval["vendor_exact_acc"] == 0.0
+
+
+def test_config_cli_validation_revise_and_updater_hardening(standalone_server, tmp_path, monkeypatch):
+    import http.client
+    import io
+    import os
+    import xml.etree.ElementTree as ET
+    from urllib.parse import urlparse
+    from PIL import Image
+    from filament_vision_server.service import updater as updater_mod
+
+    base_url, cfg_path, _ = standalone_server
+
+    # load_service_config(include_env=False) ignores runtime env token/endpoint overrides
+    cfg_file = tmp_path / "isolated_cfg.xml"
+    daemon_mod.save_service_config({"tier": "cpu", "feedback_opt_in": False, "feedback_endpoint": ""}, path=cfg_file)
+    assert daemon_mod.load_service_config(path=cfg_file, include_env=False)["feedback_endpoint"] == ""
+    monkeypatch.setenv("FILAMENT_VISION_SERVER_TOKEN", "env-secret")
+    monkeypatch.setenv("FILAMENT_VISION_SERVER_FEEDBACK_ENDPOINT", "https://override.example/up")
+    cfg_no_env = daemon_mod.load_service_config(path=cfg_file, include_env=False)
+    cfg_with_env = daemon_mod.load_service_config(path=cfg_file, include_env=True)
+    assert cfg_no_env["token"] == ""
+    assert cfg_no_env["feedback_endpoint"] == ""
+    assert cfg_with_env["token"] == "env-secret"
+    assert cfg_with_env["feedback_endpoint"] == "https://override.example/up"
+    monkeypatch.delenv("FILAMENT_VISION_SERVER_TOKEN", raising=False)
+    monkeypatch.delenv("FILAMENT_VISION_SERVER_FEEDBACK_ENDPOINT", raising=False)
+
+    # Strict Content-Type (415) and api_version major mismatch (400)
+    parsed = urlparse(base_url)
+    conn = http.client.HTTPConnection(parsed.hostname, parsed.port, timeout=10)
+    try:
+        conn.request("POST", "/v1/read", body=b"{}", headers={"Content-Type": "text/plain", "Content-Length": "2"})
+        r_415 = conn.getresponse()
+        r_415.read()
+        assert r_415.status == 415
+    finally:
+        conn.close()
+
+    st_ver, _, _ = _http_request_any(f"{base_url}/v1/read", method="POST", payload={"api_version": "2.0", "tier": "cpu", "images_b64": []})
+    assert st_ver == 400
+
+    # Type validation on /v1/read, /v1/revise, and /v1/config returns 400 (never 500)
+    st_img_t, _, _ = _http_request_any(f"{base_url}/v1/read", method="POST", payload={"api_version": "1.1", "tier": "cpu", "images_b64": [123]})
+    assert st_img_t == 400
+    st_hint_t, _, _ = _http_request_any(f"{base_url}/v1/read", method="POST", payload={"api_version": "1.1", "tier": "cpu", "hint": 123, "images_b64": []})
+    assert st_hint_t == 400
+    st_prev_t, _, _ = _http_request_any(f"{base_url}/v1/revise", method="POST", payload={"api_version": "1.1", "previous": ["bad"], "note": "PETG"})
+    assert st_prev_t == 400
+    st_note_t, _, _ = _http_request_any(f"{base_url}/v1/revise", method="POST", payload={"api_version": "1.1", "previous": {}, "note": 99})
+    assert st_note_t == 400
+    st_fil_t, _, _ = _http_request_any(f"{base_url}/v1/revise", method="POST", payload={"api_version": "1.1", "previous": {}, "note": "PETG", "filaments": "bad"})
+    assert st_fil_t == 400
+    st_ven_t, _, _ = _http_request_any(f"{base_url}/v1/revise", method="POST", payload={"api_version": "1.1", "previous": {}, "note": "PETG", "vendors": "bad"})
+    assert st_ven_t == 400
+    st_bool_false, _, raw_bool_false = _http_request_any(f"{base_url}/v1/config", method="POST", payload={"api_version": "1.1", "feedback_opt_in": "false"})
+    assert st_bool_false == 200
+    assert json.loads(raw_bool_false.decode("utf-8"))["feedback_opt_in"] is False
+    st_bool_t, _, _ = _http_request_any(f"{base_url}/v1/config", method="POST", payload={"api_version": "1.1", "feedback_opt_in": "notabool"})
+    assert st_bool_t == 400
+    st_bool_int, _, _ = _http_request_any(f"{base_url}/v1/config", method="POST", payload={"api_version": "1.1", "feedback_opt_in": 123})
+    assert st_bool_int == 400
+    st_idle_t, _, _ = _http_request_any(f"{base_url}/v1/config", method="POST", payload={"api_version": "1.1", "idle_unload_seconds": -5})
+    assert st_idle_t == 400
+
+    # /v1/revise preserves diameter, source_type, zero weight, and handles mixed Spoolman formats
+    st_rev, _, raw_rev = _http_request_any(
+        f"{base_url}/v1/revise",
+        method="POST",
+        payload={
+            "api_version": "1.1",
+            "previous": {
+                "vendor": "Prusament",
+                "material": "PLA",
+                "color_name": "Jet Black",
+                "color_hex": "123456",
+                "color_hex_source": "explicit",
+                "diameter": 2.85,
+                "source_type": "box_label",
+                "net": 0,
+                "tare": 0,
+            },
+            "note": "Galaxy Black",
+            "vendors": ["Prusament", {"name": "Overture"}],
+            "filaments": [{"name": "Galaxy Black", "vendor": {"name": "Prusament"}, "material": "PLA"}],
+        },
+    )
+    assert st_rev == 200
+    rev_item = json.loads(raw_rev.decode("utf-8"))["item"]
+    assert rev_item["diameter"] == 2.85
+    assert rev_item["net"] == 0
+    assert rev_item["tare"] == 201
+    assert rev_item["reader_extra"]["source_type"] == "box_label"
+
+    # ingest_feedback_bundles uses <filament-dataset> and data/feedback_verified/ paths
+    fb_zip = tmp_path / "sample_fb.zip"
+    img_buf = io.BytesIO()
+    Image.new("RGB", (64, 64), (200, 80, 20)).save(img_buf, format="JPEG")
+    fbq = feedback_mod.FeedbackQueue(queue_dir=tmp_path / "fq_stage")
+    fbq.enqueue(
+        images_b64=[base64.b64encode(img_buf.getvalue()).decode("ascii")],
+        predicted={"vendor": "Unknown", "material": "PLA"},
+        corrected={"vendor": "Prusament", "material": "PLA", "color_name": "Orange"},
+        note="verify ingest",
+    )
+    fb_zip.write_bytes(fbq.build_bundle_zip())
+
+    fb_dest_xml = tmp_path / "data" / "annotations" / "feedback_verified.xml"
+    fb_dest_imgs = tmp_path / "data" / "feedback_verified"
+    ing = feedback_mod.ingest_feedback_bundles(fb_zip, dest_xml=fb_dest_xml, dest_images_dir=fb_dest_imgs)
+    assert ing["imported_entries"] == 1
+    out_text = fb_dest_xml.read_text(encoding="utf-8")
+    assert "<filament-dataset" in out_text
+    assert "data/feedback_verified/" in out_text
+
+    # updater preserves last-trained-samples when training is skipped
+    upd_root = ET.Element("filament-dataset", attrib={"version": "1", "split": "feedback_verified", "count": "2", "last-trained-samples": "1"})
+    for idx_s in range(2):
+        smp = ET.SubElement(upd_root, "sample", attrib={"id": f"s{idx_s}", "split": "train"})
+        ET.SubElement(smp, "image-path").text = f"data/feedback_verified/s{idx_s}.jpg"
+    upd_xml = tmp_path / "upd_feedback.xml"
+    upd_xml.write_text(ET.tostring(upd_root, encoding="utf-8").decode("utf-8"), encoding="utf-8")
+    res_upd = updater_mod.run_one_click_update(
+        source_dirs=[tmp_path / "empty_in"],
+        min_new_samples=10,
+        skip_benchmark=True,
+        archive_dir=tmp_path / "arch",
+        feedback_xml=upd_xml,
+        feedback_images_dir=tmp_path / "upd_imgs",
+    )
+    assert res_upd["trained"] is False
+    assert res_upd["new_feedback_samples"] == 1
+    assert "skipped_reason" in res_upd
+    assert ET.parse(upd_xml).getroot().attrib.get("last-trained-samples") == "1"

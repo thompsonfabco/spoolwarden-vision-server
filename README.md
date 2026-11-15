@@ -1,9 +1,9 @@
-# Filament Vision Server (`v0.2.3`)
+# Filament Vision Server (`v0.2.4`)
 
 Standalone, cross-platform 3D printer filament spool recognition server for **Windows** and **Linux**, with a built-in dark-mode Web UI, dual-tier **ONNX CPU + Qwen2.5-VL GPU** inference, catalog enrichment, opt-in training feedback collection, and an HTTP REST API (`v1`).
 
 > [!TIP]
-> **New user?** Jump straight to the step-by-step **[User QuickStart Guide (`QUICKSTART.md`)](QUICKSTART.md)** or download a ready-to-run package from the **[`v0.2.3` Release](https://github.com/thompsonfabco/filament-vision-server/releases/tag/v0.2.3)**.
+> **New user?** Jump straight to the step-by-step **[User QuickStart Guide (`QUICKSTART.md`)](QUICKSTART.md)** or download a ready-to-run package from the **[`v0.2.4` Release](https://github.com/thompsonfabco/filament-vision-server/releases/tag/v0.2.4)**.
 
 ---
 
@@ -25,16 +25,16 @@ Standalone, cross-platform 3D printer filament spool recognition server for **Wi
 
 ---
 
-## Release Packages (`v0.2.3`)
+## Release Packages (`v0.2.4`)
 
-Platform-specific archives (`.zip` for Windows, `.tar.gz` for Linux) are published on the [GitHub Releases page](https://github.com/thompsonfabco/filament-vision-server/releases/tag/v0.2.3):
+Platform-specific archives (`.zip` for Windows, `.tar.gz` for Linux) are published on the [GitHub Releases page](https://github.com/thompsonfabco/filament-vision-server/releases/tag/v0.2.4):
 
 | Archive | Platform | Size | Tier Bundle |
 | :--- | :--- | :---: | :--- |
-| `filament-vision-server-0.2.3-windows.zip` | Windows (x64) | ~316 MB | Full (`models/cpu` + `models/gpu` LoRA adapter) |
-| `filament-vision-server-0.2.3-windows-cpu.zip` | Windows (x64) | ~146 MB | CPU-Only (`models/cpu` ONNX + OCR + catalog) |
-| `filament-vision-server-0.2.3-linux.tar.gz` | Linux (x86_64) | ~316 MB | Full (`models/cpu` + `models/gpu` LoRA adapter) |
-| `filament-vision-server-0.2.3-linux-cpu.tar.gz` | Linux (x86_64) | ~146 MB | CPU-Only (`models/cpu` ONNX + OCR + catalog) |
+| `filament-vision-server-0.2.4-windows.zip` | Windows (x64) | ~316 MB | Full (`models/cpu` + `models/gpu` LoRA adapter) |
+| `filament-vision-server-0.2.4-windows-cpu.zip` | Windows (x64) | ~146 MB | CPU-Only (`models/cpu` ONNX + OCR + catalog) |
+| `filament-vision-server-0.2.4-linux.tar.gz` | Linux (x86_64) | ~316 MB | Full (`models/cpu` + `models/gpu` LoRA adapter) |
+| `filament-vision-server-0.2.4-linux-cpu.tar.gz` | Linux (x86_64) | ~146 MB | CPU-Only (`models/cpu` ONNX + OCR + catalog) |
 
 Every release also includes `manifest.json`, `SHA256SUMS`, and an RFC 8032 Ed25519 signature `SHA256SUMS.sig`.
 
@@ -61,7 +61,7 @@ For full screenshots-free walkthroughs, firewall/LAN setup, and troubleshooting,
 
 ### Windows (One-Click)
 
-1. Extract `filament-vision-server-0.2.3-windows*.zip`.
+1. Extract `filament-vision-server-0.2.4-windows*.zip`.
 2. Double-click **`install.bat`** (or run PowerShell):
    ```powershell
    powershell -ExecutionPolicy Bypass -File .\install\install.ps1 -Start -OpenBrowser
@@ -82,8 +82,8 @@ Supported `install\install.ps1` options:
 Extract the `.tar.gz` archive and run `install/install.sh`:
 
 ```bash
-tar -xzf filament-vision-server-0.2.3-linux-cpu.tar.gz
-cd filament-vision-server-0.2.3-linux-cpu
+tar -xzf filament-vision-server-0.2.4-linux-cpu.tar.gz
+cd filament-vision-server-0.2.4-linux-cpu
 
 # System service install (/opt/filament-vision-server + systemd unit):
 sudo bash install/install.sh
@@ -175,7 +175,7 @@ tools\update_models.bat --force --tier all
 
 ## HTTP REST API (`v1`)
 
-Default listen address: `http://127.0.0.1:7920`. CORS is scoped to loopback browser origins (`localhost`, `127.0.0.1`, `::1`) plus any explicit origins configured via `FILAMENT_VISION_SERVER_ALLOWED_ORIGINS`, and browser `OPTIONS`/`POST`/`DELETE` requests carrying an untrusted `Origin` header are rejected (`403 forbidden_origin`). Set `FILAMENT_VISION_SERVER_TOKEN` to require `Authorization: Bearer <token>` on API routes (the Web UI keeps any entered token in browser `sessionStorage`; `GET /`, `/ui`, and `/v1/health` stay unauthenticated).
+Default listen address: `http://127.0.0.1:7920`. CORS allows loopback browser origins (`localhost`, `127.0.0.1`, `::1`), same-origin LAN Web UI requests whose `Origin` host matches the request `Host` header (when bound to `0.0.0.0` or `::`), and any explicit origins configured via `FILAMENT_VISION_SERVER_ALLOWED_ORIGINS`. Browser `OPTIONS`/`POST`/`DELETE` requests carrying an untrusted `Origin` header are rejected (`403 forbidden_origin`). Set `FILAMENT_VISION_SERVER_TOKEN` to require `Authorization: Bearer <token>` on API routes (the Web UI keeps any entered token in browser `sessionStorage`; `GET /`, `/ui`, and `/v1/health` stay unauthenticated).
 
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
@@ -203,14 +203,14 @@ curl -s http://127.0.0.1:7920/v1/health
 IMG_B64=$(base64 -w0 path/to/spool.jpg)
 curl -s -X POST http://127.0.0.1:7920/v1/read \
   -H "Content-Type: application/json" \
-  -d "{\"api_version\":\"1.0\",\"tier\":\"auto\",\"images_b64\":[\"$IMG_B64\"],\"hint\":\"PETG\"}"
+  -d "{\"api_version\":\"1.1\",\"tier\":\"auto\",\"images_b64\":[\"$IMG_B64\"],\"hint\":\"PETG\"}"
 ```
 
 **Revise a prediction with a natural-language note (`POST /v1/revise`):**
 ```bash
 curl -s -X POST http://127.0.0.1:7920/v1/revise \
   -H "Content-Type: application/json" \
-  -d '{"api_version":"1.0","previous":{"vendor":"Unknown","material":"PLA","color_name":"Black"},"note":"Actually Prusament PETG Jet Black, bare spool"}'
+  -d '{"api_version":"1.1","previous":{"vendor":"Unknown","material":"PLA","color_name":"Black"},"note":"Actually Prusament PETG Jet Black, bare spool"}'
 ```
 
 ---
@@ -239,7 +239,7 @@ filament-vision-server sync-catalog [--library-root PATH]
 | :--- | :--- |
 | `FILAMENT_VISION_SERVER_HOME` | Override base directory containing `configs/`, `data/`, and `models/` |
 | `FILAMENT_VISION_SERVER_TOKEN` | Require `Authorization: Bearer <token>` on API routes |
-| `FILAMENT_VISION_SERVER_ALLOWED_ORIGINS` | Comma-separated extra CORS origins allowed alongside loopback (`http://...`) |
+| `FILAMENT_VISION_SERVER_ALLOWED_ORIGINS` | Comma-separated extra cross-origin URLs allowed alongside loopback & same-origin LAN UI (`http://...`) |
 | `FILAMENT_VISION_SERVER_FEEDBACK_ENDPOINT` | Override the default opt-in training feedback upload endpoint |
 | `FILAMENT_VISION_SERVER_CPU_ONLY=1` | Force ONNX Runtime `CPUExecutionProvider` (skip CUDA/DirectML/CoreML) |
 
@@ -259,7 +259,7 @@ tools\run_wsl_installer_test.bat
 
 ### Build Platform-Specific Release Archives
 
-Stage bundles in `dist/` and package platform-specific archives (`.zip` for Windows, `.tar.gz` for Linux) with `manifest.json`, `SHA256SUMS`, and Ed25519 `SHA256SUMS.sig` under `release/v0.2.3/`:
+Stage bundles in `dist/` and package platform-specific archives (`.zip` for Windows, `.tar.gz` for Linux) with `manifest.json`, `SHA256SUMS`, and Ed25519 `SHA256SUMS.sig` under `release/v0.2.4/`:
 
 ```bash
 # Single platform bundle:
@@ -267,7 +267,7 @@ python tools/build_standalone_bundle.py --platform windows
 python tools/build_standalone_bundle.py --platform linux --no-gpu
 
 # Full signed release (windows.zip, windows-cpu.zip, linux.tar.gz, linux-cpu.tar.gz):
-python tools/build_standalone_bundle.py --version 0.2.3 --build-release --key-file /path/to/release_key.pem
+python tools/build_standalone_bundle.py --version 0.2.4 --build-release --key-file /path/to/release_key.pem
 ```
 
 ---

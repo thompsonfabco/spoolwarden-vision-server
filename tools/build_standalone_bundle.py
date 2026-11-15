@@ -28,7 +28,7 @@ if str(TOOLS_DIR) not in sys.path:
 
 from sign_release import generate_sha256sums, sign, verify  # noqa: E402
 
-DEFAULT_VERSION = "0.2.3"
+DEFAULT_VERSION = "0.2.4"
 
 COMMON_ROOT_FILES = (
     "pyproject.toml",
@@ -36,8 +36,6 @@ COMMON_ROOT_FILES = (
     "QUICKSTART.md",
     "LICENSE",
     "THIRD-PARTY.md",
-    ".gitignore",
-    ".gitattributes",
 )
 
 WINDOWS_ROOT_FILES = (
@@ -67,11 +65,13 @@ def _copy_tree_filtered(
     dst_dir: Path,
     skip_dirs: Iterable[str] = ("__pycache__",),
     skip_suffixes: Iterable[str] = (".pyc",),
+    allowed_suffixes: Iterable[str] | None = None,
 ) -> None:
     if not src_dir.is_dir():
         return
     skip_dir_set = set(skip_dirs)
     skip_suf_tuple = tuple(skip_suffixes)
+    allowed_suf_tuple = tuple(allowed_suffixes) if allowed_suffixes is not None else None
     for root, dirs, files in os.walk(src_dir):
         dirs[:] = [d for d in dirs if d not in skip_dir_set and not d.endswith(".egg-info")]
         rel = Path(root).relative_to(src_dir)
@@ -79,6 +79,8 @@ def _copy_tree_filtered(
         out_root.mkdir(parents=True, exist_ok=True)
         for name in files:
             if name.endswith(skip_suf_tuple):
+                continue
+            if allowed_suf_tuple is not None and not name.endswith(allowed_suf_tuple):
                 continue
             src_file = Path(root) / name
             dst_file = out_root / name
@@ -161,7 +163,13 @@ def build_bundle(
     cpu_src = PROJECT_ROOT / "models" / "cpu"
     if not cpu_src.is_dir():
         raise FileNotFoundError(f"CPU models directory missing: {cpu_src}")
-    _copy_tree_filtered(cpu_src, bundle_dir / "models" / "cpu")
+    _copy_tree_filtered(
+        cpu_src,
+        bundle_dir / "models" / "cpu",
+        skip_dirs=("__pycache__", "rfdetr_runs"),
+        skip_suffixes=(".pyc", ".pt", ".pth", ".ckpt"),
+        allowed_suffixes=(".onnx", ".npz", ".xml", ".json", ".txt", ".md"),
+    )
 
     gpu_src = PROJECT_ROOT / "models" / "gpu"
     if include_gpu and gpu_src.is_dir():
@@ -177,7 +185,6 @@ def build_bundle(
     gpu_bytes = 0
     gpu_count = 0
     total_bytes = 0
-    sha_lines: list[str] = []
 
     for f in staged_files:
         rel_posix = f.relative_to(bundle_dir).as_posix()
@@ -189,18 +196,8 @@ def build_bundle(
         elif rel_posix.startswith("models/gpu/"):
             gpu_bytes += size
             gpu_count += 1
-        digest = _sha256_file(f)
-        sha_lines.append(f"{digest}  {rel_posix}")
 
-    sha_path = bundle_dir / "SHA256SUMS"
-    sha_path.write_bytes(("\n".join(sha_lines) + "\n").encode("utf-8"))
-
-    signed = False
-    if key_file is not None:
-        sig_path = sign(sha_path, Path(key_file).read_bytes())
-        verify(sha_path, sig_path)
-        signed = True
-
+    signed_expected = key_file is not None
     manifest = {
         "service": "filament-vision-server",
         "version": version,
@@ -208,7 +205,7 @@ def build_bundle(
         "bundle": bundle_name,
         "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "include_gpu": bool(include_gpu and gpu_count > 0),
-        "file_count": len(staged_files),
+        "file_count": len(staged_files) + 1,
         "total_bytes": total_bytes,
         "total_mb": round(total_bytes / (1024 * 1024), 2),
         "tiers": {
@@ -216,10 +213,22 @@ def build_bundle(
             "gpu": {"files": gpu_count, "bytes": gpu_bytes, "mb": round(gpu_bytes / (1024 * 1024), 2)},
         },
         "checksum_file": "SHA256SUMS",
-        "signature_file": "SHA256SUMS.sig" if signed else None,
+        "signature_file": "SHA256SUMS.sig" if signed_expected else None,
     }
     manifest_path = bundle_dir / "manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+
+    files_to_hash: list[Path] = sorted(
+        (p for p in bundle_dir.rglob("*") if p.is_file() and p.name not in ("SHA256SUMS", "SHA256SUMS.sig")),
+        key=lambda p: p.relative_to(bundle_dir).as_posix(),
+    )
+    sha_lines = [f"{_sha256_file(f)}  {f.relative_to(bundle_dir).as_posix()}" for f in files_to_hash]
+    sha_path = bundle_dir / "SHA256SUMS"
+    sha_path.write_bytes(("\n".join(sha_lines) + "\n").encode("utf-8"))
+
+    if key_file is not None:
+        sig_path = sign(sha_path, Path(key_file).read_bytes())
+        verify(sha_path, sig_path)
     return bundle_dir
 
 
@@ -262,50 +271,66 @@ def build_release_archives(
     output_dir: str | Path | None = None,
     key_file: str | Path | None = None,
 ) -> Path:
-    dist_root = PROJECT_ROOT / "dist"
-    if dist_root.is_dir():
-        for child in list(dist_root.iterdir()):
-            if child.is_dir() and child.name.startswith("filament-vision-server-"):
-                shutil.rmtree(child, ignore_errors=True)
-
-    release_dir = (Path(output_dir) if output_dir else (PROJECT_ROOT / "release")) / f"v{version}"
+    is_default_out = output_dir is None
+    release_parent = PROJECT_ROOT / "release" if is_default_out else Path(output_dir)
+    release_dir = release_parent / f"v{version}"
     if release_dir.exists():
         shutil.rmtree(release_dir)
     release_dir.mkdir(parents=True, exist_ok=True)
 
-    win_full_dir = build_bundle(
-        version=version,
-        include_gpu=True,
-        platform="windows",
-        key_file=key_file,
-        bundle_name=f"filament-vision-server-{version}-windows",
-    )
-    win_cpu_dir = build_bundle(
-        version=version,
-        include_gpu=False,
-        platform="windows",
-        key_file=key_file,
-        bundle_name=f"filament-vision-server-{version}-windows-cpu",
-    )
-    linux_full_dir = build_bundle(
-        version=version,
-        include_gpu=True,
-        platform="linux",
-        key_file=key_file,
-        bundle_name=f"filament-vision-server-{version}-linux",
-    )
-    linux_cpu_dir = build_bundle(
-        version=version,
-        include_gpu=False,
-        platform="linux",
-        key_file=key_file,
-        bundle_name=f"filament-vision-server-{version}-linux-cpu",
-    )
+    if is_default_out:
+        staging_dir = PROJECT_ROOT / "dist"
+        if staging_dir.is_dir():
+            for child in list(staging_dir.iterdir()):
+                if child.is_dir() and child.name.startswith("filament-vision-server-"):
+                    shutil.rmtree(child, ignore_errors=True)
+    else:
+        staging_dir = release_parent / f".staging-v{version}"
+        if staging_dir.exists():
+            shutil.rmtree(staging_dir, ignore_errors=True)
+        staging_dir.mkdir(parents=True, exist_ok=True)
 
-    win_full_zip = _pack_zip(win_full_dir, release_dir)
-    win_cpu_zip = _pack_zip(win_cpu_dir, release_dir)
-    linux_full_tar = _pack_tar_gz(linux_full_dir, release_dir)
-    linux_cpu_tar = _pack_tar_gz(linux_cpu_dir, release_dir)
+    try:
+        win_full_dir = build_bundle(
+            version=version,
+            output_dir=staging_dir,
+            include_gpu=True,
+            platform="windows",
+            key_file=key_file,
+            bundle_name=f"filament-vision-server-{version}-windows",
+        )
+        win_cpu_dir = build_bundle(
+            version=version,
+            output_dir=staging_dir,
+            include_gpu=False,
+            platform="windows",
+            key_file=key_file,
+            bundle_name=f"filament-vision-server-{version}-windows-cpu",
+        )
+        linux_full_dir = build_bundle(
+            version=version,
+            output_dir=staging_dir,
+            include_gpu=True,
+            platform="linux",
+            key_file=key_file,
+            bundle_name=f"filament-vision-server-{version}-linux",
+        )
+        linux_cpu_dir = build_bundle(
+            version=version,
+            output_dir=staging_dir,
+            include_gpu=False,
+            platform="linux",
+            key_file=key_file,
+            bundle_name=f"filament-vision-server-{version}-linux-cpu",
+        )
+
+        win_full_zip = _pack_zip(win_full_dir, release_dir)
+        win_cpu_zip = _pack_zip(win_cpu_dir, release_dir)
+        linux_full_tar = _pack_tar_gz(linux_full_dir, release_dir)
+        linux_cpu_tar = _pack_tar_gz(linux_cpu_dir, release_dir)
+    finally:
+        if not is_default_out and staging_dir.exists():
+            shutil.rmtree(staging_dir, ignore_errors=True)
 
     assets_info = {}
     for p in (win_full_zip, win_cpu_zip, linux_full_tar, linux_cpu_tar):

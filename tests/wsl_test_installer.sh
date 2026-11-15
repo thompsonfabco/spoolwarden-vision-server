@@ -80,7 +80,7 @@ for _ in range(30):
         time.sleep(1.0)
 
 assert health is not None and health.get("status") == "ok", f"Health check failed: {health}"
-assert health.get("module_version") == "0.2.3", f"Unexpected module_version: {health}"
+assert health.get("module_version") == "0.2.4", f"Unexpected module_version: {health}"
 print("[wsl_test] /v1/health OK:", health["module_version"], health["status"])
 
 with urllib.request.urlopen(f"{base}/", timeout=5.0) as resp:
@@ -102,7 +102,7 @@ jpg_b64 = base64.b64encode(buf.getvalue()).decode("ascii")
 req = urllib.request.Request(
     f"{base}/v1/read",
     data=json.dumps({
-        "api_version": "1.0",
+        "api_version": "1.1",
         "tier": "cpu",
         "images_b64": [jpg_b64],
         "hint": "Hatchbox PLA Orange 1kg",
@@ -120,7 +120,7 @@ print("[wsl_test] POST /v1/read OK:", first.get("vendor"), first.get("material")
 rev_req = urllib.request.Request(
     f"{base}/v1/revise",
     data=json.dumps({
-        "api_version": "1.0",
+        "api_version": "1.1",
         "previous": first,
         "note": "Actually Prusament PETG Jet Black",
     }).encode("utf-8"),

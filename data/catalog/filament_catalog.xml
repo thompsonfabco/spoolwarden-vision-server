@@ -546,7 +546,7 @@
     <product line="TPU 95A" material="TPU" density="1.23" diameter="1.75" nozzle-range="195-230" bed-range="50-60" bambu-parent="Bambu TPU 95A" />
   </vendor>
   <vendor name="Atomic Filament" slug="atomic-filament" tare-grams="200" priority="3" flange-trait="standard-spool">
-    <product line="ABS" material="ABS" density="1.06" diameter="1.75" nozzle-range="235-255" bed-range="115 +/-10" bambu-parent="Bambu ABS">
+    <product line="ABS" material="ABS" density="1.06" diameter="1.75" nozzle-range="235-255" bed-range="105-125" bambu-parent="Bambu ABS">
       <color name="Black" hex="1A1A1A" family="Black" />
       <color name="Bright White" hex="F5F5F5" family="White" />
       <color name="Gray" hex="808487" family="Gray/Silver" />
@@ -576,19 +576,19 @@
       <color name="Royal Blue" hex="2454C5" family="Blue" />
       <color name="Neon Green UV Reactive Opaque" hex="2E7D32" family="Green" />
     </product>
-    <product line="Carbon Fiber ABS" material="ABS-CF" density="1.24" diameter="1.75" nozzle-range="235-255" bed-range="115 +/-10" bambu-parent="Bambu ABS">
+    <product line="Carbon Fiber ABS" material="ABS-CF" density="1.24" diameter="1.75" nozzle-range="235-255" bed-range="105-125" bambu-parent="Bambu ABS">
       <color name="Ultra Black" hex="1A1A1A" family="Black" />
     </product>
     <product line="Carbon Fiber ASA" material="ASA-CF" density="1.24" diameter="1.75" nozzle-range="240-260" bed-range="110-120" bambu-parent="Bambu ASA-CF">
       <color name="Black" hex="1A1A1A" family="Black" />
     </product>
-    <product line="Carbon Fiber Nuclear Nylon v3" material="PA" density="1.17" diameter="1.75" nozzle-range="265-285" bed-range="60" bambu-parent="Bambu PA-CF">
+    <product line="Carbon Fiber Nuclear Nylon v3" material="PA" density="1.17" diameter="1.75" nozzle-range="265-285" bed-range="60-60" bambu-parent="Bambu PA-CF">
       <color name="Black" hex="1A1A1A" family="Black" />
     </product>
-    <product line="Carbon Fiber PCTG PRO" material="PCTG-CF" density="1.24" diameter="1.75" nozzle-range="255-272" bed-range="80 +/-10" bambu-parent="Generic PCTG">
+    <product line="Carbon Fiber PCTG PRO" material="PCTG-CF" density="1.24" diameter="1.75" nozzle-range="255-272" bed-range="70-90" bambu-parent="Generic PCTG">
       <color name="Extreme Black" hex="1A1A1A" family="Black" />
     </product>
-    <product line="Carbon Fiber PETG" material="PETG-CF" density="1.24" diameter="1.75" nozzle-range="240-265" bed-range="80 +/-10" bambu-parent="Bambu PETG-CF">
+    <product line="Carbon Fiber PETG" material="PETG-CF" density="1.24" diameter="1.75" nozzle-range="240-265" bed-range="70-90" bambu-parent="Bambu PETG-CF">
       <color name="Extreme Black" hex="1A1A1A" family="Black" />
       <color name="Dark Blue Extreme" hex="102A56" family="Blue" />
       <color name="Dark Cherry Extreme" hex="D12229" family="Red" />
@@ -603,7 +603,7 @@
       <color name="Gun Metal Gray" hex="808487" family="Gray/Silver" />
       <color name="Ultra Impact Modified White" hex="F5F5F5" family="White" />
     </product>
-    <product line="Flame Retardant ABS FR15U" material="ABS" density="1.19" diameter="1.75" nozzle-range="235-255" bed-range="115 +/-10" bambu-parent="Bambu ABS">
+    <product line="Flame Retardant ABS FR15U" material="ABS" density="1.19" diameter="1.75" nozzle-range="235-255" bed-range="105-125" bambu-parent="Bambu ABS">
       <color name="Black" hex="1A1A1A" family="Black" />
     </product>
     <product line="Hi-Flow Pro PLA" material="PLA" density="1.25" diameter="1.75" nozzle-range="180-230" bed-range="45-60" bambu-parent="Bambu PLA Basic">
@@ -614,7 +614,7 @@
       <color name="Black" hex="1A1A1A" family="Black" />
       <color name="White" hex="F5F5F5" family="White" />
     </product>
-    <product line="PCTG PRO" material="PCTG" density="1.27" diameter="1.75" nozzle-range="255-272" bed-range="80 +/-10" bambu-parent="Generic PCTG">
+    <product line="PCTG PRO" material="PCTG" density="1.27" diameter="1.75" nozzle-range="255-272" bed-range="70-90" bambu-parent="Generic PCTG">
       <color name="Deep Black Opaque" hex="1A1A1A" family="Black" />
       <color name="Extreme JET Black" hex="111111" family="Black" />
       <color name="Bright White Opaque" hex="F5F5F5" family="White" />
@@ -652,7 +652,7 @@
       <color name="Indigo Golden Sparkle Translucent" hex="DCE6E8" family="Transparent/Natural" />
       <color name="Marble" hex="D8D9D6" family="Gray/Silver" />
     </product>
-    <product line="PETG PRO" material="PETG" density="1.27" diameter="1.75" nozzle-range="240-265" bed-range="80 +/-10" bambu-parent="Bambu PETG Basic">
+    <product line="PETG PRO" material="PETG" density="1.27" diameter="1.75" nozzle-range="240-265" bed-range="70-90" bambu-parent="Bambu PETG Basic">
       <color name="Deep Black Opaque" hex="1A1A1A" family="Black" />
       <color name="Extreme JET Black" hex="111111" family="Black" />
       <color name="Bright White Opaque" hex="F5F5F5" family="White" />
@@ -774,7 +774,7 @@
       <color name="Too Good to be Blue Shade-Shifting" hex="1976D2" family="Blue" />
       <color name="MICROPOLITAN Bright White" hex="F5F5F5" family="White" />
     </product>
-    <product line="Silk PLA" material="PLA" density="1.25" diameter="1.75" nozzle-range="215-230" bed-range="60" bambu-parent="Bambu PLA Silk">
+    <product line="Silk PLA" material="PLA" density="1.25" diameter="1.75" nozzle-range="215-230" bed-range="60-60" bambu-parent="Bambu PLA Silk">
       <color name="Silky Aqua" hex="808487" family="Gray/Silver" />
       <color name="Silky Electric Blue" hex="1976D2" family="Blue" />
       <color name="Silky Sunset" hex="808487" family="Gray/Silver" />
@@ -787,25 +787,25 @@
     <alias>Bambu</alias>
     <alias>BBL</alias>
     <alias>BambuLab</alias>
-    <product line="ABS" material="ABS" density="1.05" diameter="1.75" nozzle-range="240-270" bed-range="80-100 (glue)" bambu-parent="Bambu ABS" />
-    <product line="ABS-GF" material="ABS-GF" density="1.08" diameter="1.75" nozzle-range="240-280" bed-range="80-100 (glue)" bambu-parent="Bambu ABS-GF" />
-    <product line="ASA" material="ASA" density="1.05" diameter="1.75" nozzle-range="240-270" bed-range="80-100 (glue)" bambu-parent="Bambu ASA" />
-    <product line="ASA Aero" material="ASA" density="0.99" diameter="1.75" nozzle-range="240-280" bed-range="80-90 (glue)" bambu-parent="Bambu ASA-Aero" />
+    <product line="ABS" material="ABS" density="1.05" diameter="1.75" nozzle-range="240-270" bed-range="80-100" bambu-parent="Bambu ABS" />
+    <product line="ABS-GF" material="ABS-GF" density="1.08" diameter="1.75" nozzle-range="240-280" bed-range="80-100" bambu-parent="Bambu ABS-GF" />
+    <product line="ASA" material="ASA" density="1.05" diameter="1.75" nozzle-range="240-270" bed-range="80-100" bambu-parent="Bambu ASA" />
+    <product line="ASA Aero" material="ASA" density="0.99" diameter="1.75" nozzle-range="240-280" bed-range="80-90" bambu-parent="Bambu ASA-Aero" />
     <product line="ASA-CF" material="ASA-CF" density="1.02" diameter="1.75" nozzle-range="250-280" bed-range="80-100" bambu-parent="Bambu ASA-CF" />
-    <product line="PA-CF" material="PA-CF" density="1.09" diameter="1.75" nozzle-range="260-290" bed-range="80-100 (PVP glue)" bambu-parent="Bambu PA-CF" />
-    <product line="PA6-CF" material="PA6-CF" density="1.09" diameter="1.75" nozzle-range="260-290" bed-range="80-100 (glue)" bambu-parent="Bambu PA6-CF" />
-    <product line="PA6-GF" material="PA6-GF" density="1.24" diameter="1.75" nozzle-range="260-290" bed-range="80-100 (glue)" bambu-parent="Bambu PA6-GF">
+    <product line="PA-CF" material="PA-CF" density="1.09" diameter="1.75" nozzle-range="260-290" bed-range="80-100" bambu-parent="Bambu PA-CF" />
+    <product line="PA6-CF" material="PA6-CF" density="1.09" diameter="1.75" nozzle-range="260-290" bed-range="80-100" bambu-parent="Bambu PA6-CF" />
+    <product line="PA6-GF" material="PA6-GF" density="1.24" diameter="1.75" nozzle-range="260-290" bed-range="80-100" bambu-parent="Bambu PA6-GF">
       <color name="Black" hex="1A1A1A" family="Black" />
     </product>
     <product line="PAHT-CF" material="PA-CF" density="1.06" diameter="1.75" nozzle-range="260-290" bed-range="80-100" bambu-parent="Bambu PAHT-CF">
       <color name="Black" hex="1A1A1A" family="Black" />
     </product>
-    <product line="PC" material="PC" density="1.20" diameter="1.75" nozzle-range="260-280" bed-range="90-110 (glue)" bambu-parent="Bambu PC" />
+    <product line="PC" material="PC" density="1.20" diameter="1.75" nozzle-range="260-280" bed-range="90-110" bambu-parent="Bambu PC" />
     <product line="PC FR" material="PC" density="1.18" diameter="1.75" nozzle-range="190-230" bed-range="45-60" bambu-parent="Bambu PC FR">
       <color name="Black" hex="1A1A1A" family="Black" />
     </product>
-    <product line="PET-CF" material="PET-CF" density="1.29" diameter="1.75" nozzle-range="260-290" bed-range="80-100 (glue)" bambu-parent="Bambu PET-CF" />
-    <product line="PETG Basic" material="PETG" density="1.25" diameter="1.75" nozzle-range="240-270" bed-range="65-75 (glue)" bambu-parent="Bambu PETG Basic" />
+    <product line="PET-CF" material="PET-CF" density="1.29" diameter="1.75" nozzle-range="260-290" bed-range="80-100" bambu-parent="Bambu PET-CF" />
+    <product line="PETG Basic" material="PETG" density="1.25" diameter="1.75" nozzle-range="240-270" bed-range="65-75" bambu-parent="Bambu PETG Basic" />
     <product line="PETG HF" material="PETG" density="1.28" diameter="1.75" nozzle-range="230-260" bed-range="65-75" bambu-parent="Bambu PETG HF">
       <color name="Yellow" hex="FBC02D" family="Yellow" />
       <color name="Orange" hex="F57C00" family="Orange" />
@@ -867,37 +867,37 @@
     <product line="PPA-CF" material="PPA-CF" density="1.25" diameter="1.75" nozzle-range="280-310" bed-range="100-120" bambu-parent="Bambu PPA-CF">
       <color name="Black" hex="1A1A1A" family="Black" />
     </product>
-    <product line="PPS-CF" material="PPS-CF" density="1.26" diameter="1.75" nozzle-range="310-340" bed-range="100-120 (glue)" bambu-parent="Bambu PPS-CF" />
-    <product line="PVA" material="PVA" density="1.27" diameter="1.75" nozzle-range="220-250" bed-range="35-45 (glue)" bambu-parent="Bambu PVA">
+    <product line="PPS-CF" material="PPS-CF" density="1.26" diameter="1.75" nozzle-range="310-340" bed-range="100-120" bambu-parent="Bambu PPS-CF" />
+    <product line="PVA" material="PVA" density="1.27" diameter="1.75" nozzle-range="220-250" bed-range="35-45" bambu-parent="Bambu PVA">
       <color name="Clear" hex="E4ECEE" family="Transparent/Natural" />
     </product>
-    <product line="Support for ABS" material="ABS-S" density="1.16" diameter="1.75" nozzle-range="240-270" bed-range="80-100 (glue)" bambu-parent="Bambu Support for ABS" />
-    <product line="Support for PA/PET" material="PA-S" density="1.17" diameter="1.75" nozzle-range="260-290" bed-range="80-100 (PVP glue)" bambu-parent="Bambu Support For PA PET" />
-    <product line="Support for PLA" material="PLA-S" density="1.22" diameter="1.75" nozzle-range="220-230" bed-range="35-45 (PVP glue)" bambu-parent="Bambu Support For PLA" />
-    <product line="Support for PLA/PETG" material="PLA-S" density="1.28" diameter="1.75" nozzle-range="190-240" bed-range="35-60 (glue)" bambu-parent="Bambu Support For PLA-PETG" />
+    <product line="Support for ABS" material="ABS-S" density="1.16" diameter="1.75" nozzle-range="240-270" bed-range="80-100" bambu-parent="Bambu Support for ABS" />
+    <product line="Support for PA/PET" material="PA-S" density="1.17" diameter="1.75" nozzle-range="260-290" bed-range="80-100" bambu-parent="Bambu Support For PA PET" />
+    <product line="Support for PLA" material="PLA-S" density="1.22" diameter="1.75" nozzle-range="220-230" bed-range="35-45" bambu-parent="Bambu Support For PLA" />
+    <product line="Support for PLA/PETG" material="PLA-S" density="1.28" diameter="1.75" nozzle-range="190-240" bed-range="35-60" bambu-parent="Bambu Support For PLA-PETG" />
     <product line="TPU 85A" material="TPU" density="1.18" diameter="1.75" nozzle-range="220-250" bed-range="30-35" bambu-parent="Bambu TPU 85A">
       <color name="Orange" hex="F57C00" family="Orange" />
     </product>
     <product line="TPU 90A" material="TPU" density="1.24" diameter="1.75" nozzle-range="200-250" bed-range="30-35" bambu-parent="Bambu TPU 90A">
       <color name="Black" hex="1A1A1A" family="Black" />
     </product>
-    <product line="TPU 95A" material="TPU" density="1.20" diameter="1.75" nozzle-range="220-240" bed-range="30-35 (glue)" bambu-parent="Bambu TPU 95A" />
-    <product line="TPU 95A HF" material="TPU" density="1.22" diameter="1.75" nozzle-range="220-240" bed-range="30-35 (glue)" bambu-parent="Bambu TPU 95A HF" />
-    <product line="TPU for AMS" material="TPU" density="1.26" diameter="1.75" nozzle-range="220-240" bed-range="30-35 (glue)" bambu-parent="Bambu TPU for AMS" />
+    <product line="TPU 95A" material="TPU" density="1.20" diameter="1.75" nozzle-range="220-240" bed-range="30-35" bambu-parent="Bambu TPU 95A" />
+    <product line="TPU 95A HF" material="TPU" density="1.22" diameter="1.75" nozzle-range="220-240" bed-range="30-35" bambu-parent="Bambu TPU 95A HF" />
+    <product line="TPU for AMS" material="TPU" density="1.26" diameter="1.75" nozzle-range="220-240" bed-range="30-35" bambu-parent="Bambu TPU for AMS" />
   </vendor>
   <vendor name="CC3D" slug="cc3d" tare-grams="200" priority="3" flange-trait="standard-spool">
     <product line="PC" material="PC" density="1.24" diameter="1.75" nozzle-range="255-265" bed-range="90-105" bambu-parent="Generic PC">
       <color name="PC Green" hex="2E7D32" family="Green" />
       <color name="PC Orange" hex="F57C00" family="Orange" />
     </product>
-    <product line="TPU 72D" material="TPU" density="1.24" diameter="1.75" nozzle-range="230-240" bed-range="60 (glue)" bambu-parent="Generic TPU for AMS">
+    <product line="TPU 72D" material="TPU" density="1.24" diameter="1.75" nozzle-range="230-240" bed-range="60-60" bambu-parent="Generic TPU for AMS">
       <color name="TPU 72D Black" hex="1A1A1A" family="Black" />
       <color name="TPU 72D White" hex="F5F5F5" family="White" />
       <color name="Hard TPU Red" hex="D12229" family="Red" />
     </product>
   </vendor>
   <vendor name="CCTREE" slug="cctree" tare-grams="200" priority="3" flange-trait="standard-spool">
-    <product line="ABS" material="ABS" density="1.24" diameter="1.75" nozzle-range="240-250" bed-range="90-100 (PEI with ABS glue)" bambu-parent="Generic ABS">
+    <product line="ABS" material="ABS" density="1.24" diameter="1.75" nozzle-range="240-250" bed-range="90-100" bambu-parent="Generic ABS">
       <color name="ABS Glow in the Dark Blue" hex="102A56" family="Blue" />
     </product>
   </vendor>
@@ -916,16 +916,16 @@
     </product>
   </vendor>
   <vendor name="ColorFabb" slug="colorfabb" tare-grams="200" priority="3" flange-trait="standard-spool">
-    <product line="allPHA" material="PHA" density="1.24" diameter="1.75" nozzle-range="190-200" bed-range="0" bambu-parent="Generic PHA" />
+    <product line="allPHA" material="PHA" density="1.24" diameter="1.75" nozzle-range="190-200" bed-range="0-0" bambu-parent="Generic PHA" />
     <product line="ASA" material="ASA" density="1.07" diameter="1.75" nozzle-range="240-260" bed-range="90-100" bambu-parent="Bambu ASA" />
     <product line="bronzeFill" material="PLA" density="1.24" diameter="1.75" nozzle-range="195-220" bed-range="50-60" bambu-parent="Bambu PLA Metal" />
     <product line="copperFill" material="PLA" density="1.24" diameter="1.75" nozzle-range="195-220" bed-range="50-60" bambu-parent="Bambu PLA Metal" />
     <product line="corkFill" material="PLA" density="1.24" diameter="1.75" nozzle-range="210-230" bed-range="50-60" bambu-parent="Bambu PLA Wood" />
     <product line="glowFill" material="PLA" density="1.2" diameter="1.75" nozzle-range="195-220" bed-range="50-60" bambu-parent="Bambu PLA Glow" />
     <product line="LW-ASA" material="ASA" density="1.24" diameter="1.75" nozzle-range="240-260" bed-range="90-100" bambu-parent="Bambu ASA-Aero" />
-    <product line="LW-PET" material="PET" density="1.24" diameter="1.75" nozzle-range="210-260" bed-range="60" bambu-parent="Generic PETG" />
-    <product line="LW-PET Flex" material="PET" density="1.24" diameter="1.75" nozzle-range="210-260" bed-range="60" bambu-parent="Generic PETG" />
-    <product line="LW-PET Flex Max" material="PET" density="1.24" diameter="1.75" nozzle-range="210-260" bed-range="60" bambu-parent="Generic PETG" />
+    <product line="LW-PET" material="PET" density="1.24" diameter="1.75" nozzle-range="210-260" bed-range="60-60" bambu-parent="Generic PETG" />
+    <product line="LW-PET Flex" material="PET" density="1.24" diameter="1.75" nozzle-range="210-260" bed-range="60-60" bambu-parent="Generic PETG" />
+    <product line="LW-PET Flex Max" material="PET" density="1.24" diameter="1.75" nozzle-range="210-260" bed-range="60-60" bambu-parent="Generic PETG" />
     <product line="LW-PLA" material="PLA" density="1.2" diameter="1.75" nozzle-range="195-260" bed-range="50-60" bambu-parent="Bambu PLA Aero">
       <color name="Black" hex="1A1A1A" family="Black" />
       <color name="Natural" hex="E3E0D3" family="Transparent/Natural" />
@@ -946,13 +946,13 @@
     </product>
     <product line="PA Neat" material="PA" density="1.25" diameter="1.75" nozzle-range="265-290" bed-range="40-50" bambu-parent="Generic PA" />
     <product line="PA-CF Low Warp" material="PA-CF" density="1.4" diameter="1.75" nozzle-range="260-280" bed-range="45-60" bambu-parent="Bambu PA-CF" />
-    <product line="PET Flex Max" material="PET" density="1.24" diameter="1.75" nozzle-range="210-260" bed-range="60" bambu-parent="Generic PETG">
+    <product line="PET Flex Max" material="PET" density="1.24" diameter="1.75" nozzle-range="210-260" bed-range="60-60" bambu-parent="Generic PETG">
       <color name="Clear" hex="E4ECEE" family="Transparent/Natural" />
     </product>
-    <product line="PET High Speed Pro" material="PET" density="1.32" diameter="1.75" nozzle-range="230-260" bed-range="60" bambu-parent="Bambu PETG HF">
+    <product line="PET High Speed Pro" material="PET" density="1.32" diameter="1.75" nozzle-range="230-260" bed-range="60-60" bambu-parent="Bambu PETG HF">
       <color name="Clear" hex="E4ECEE" family="Transparent/Natural" />
     </product>
-    <product line="PET Ultra High Speed" material="PET" density="1.33" diameter="1.75" nozzle-range="280-320" bed-range="60" bambu-parent="Bambu PETG HF">
+    <product line="PET Ultra High Speed" material="PET" density="1.33" diameter="1.75" nozzle-range="280-320" bed-range="60-60" bambu-parent="Bambu PETG HF">
       <color name="Clear" hex="E4ECEE" family="Transparent/Natural" />
     </product>
     <product line="PETG Economy" material="PETG" density="1.28" diameter="1.75" nozzle-range="235-255" bed-range="70-80" bambu-parent="Bambu PETG Basic" />
@@ -1028,9 +1028,9 @@
     </product>
     <product line="TPU 85A" material="TPU" density="1.19" diameter="1.75" nozzle-range="220-230" bed-range="30-40" bambu-parent="Bambu TPU 85A" />
     <product line="TPU 95A" material="TPU" density="1.21" diameter="1.75" nozzle-range="220-230" bed-range="30-40" bambu-parent="Bambu TPU 95A" />
-    <product line="varioShore PEBA 40D/85A" material="PEBA" density="1.03" diameter="1.75" nozzle-range="210-250" bed-range="60" bambu-parent="Generic TPU" />
-    <product line="varioShore PEBA 45D/90A" material="PEBA" density="1.03" diameter="1.75" nozzle-range="210-250" bed-range="60" bambu-parent="Generic TPU" />
-    <product line="varioShore TPU 85A" material="TPU" density="1.14" diameter="1.75" nozzle-range="250-250" bed-range="60" bambu-parent="Generic TPU">
+    <product line="varioShore PEBA 40D/85A" material="PEBA" density="1.03" diameter="1.75" nozzle-range="210-250" bed-range="60-60" bambu-parent="Generic TPU" />
+    <product line="varioShore PEBA 45D/90A" material="PEBA" density="1.03" diameter="1.75" nozzle-range="210-250" bed-range="60-60" bambu-parent="Generic TPU" />
+    <product line="varioShore TPU 85A" material="TPU" density="1.14" diameter="1.75" nozzle-range="250-250" bed-range="60-60" bambu-parent="Generic TPU">
       <color name="Black" hex="1A1A1A" family="Black" />
     </product>
     <product line="varioShore TPU 95A" material="TPU" density="1.2" diameter="1.75" nozzle-range="195-260" bed-range="50-60" bambu-parent="Generic TPU">
@@ -1074,9 +1074,9 @@
     <product line="CR-PETG" material="PETG" density="1.24" diameter="1.75" nozzle-range="230-250" bed-range="60-100" bambu-parent="Generic PETG">
       <color name="CR-PETG White" hex="F5F5F5" family="White" />
     </product>
-    <product line="CR-PLA" material="PLA" density="1.24" diameter="1.75" nozzle-range="190-230" bed-range="No heating-60" bambu-parent="Bambu PLA Basic" />
+    <product line="CR-PLA" material="PLA" density="1.24" diameter="1.75" nozzle-range="190-230" bed-range="25-60" bambu-parent="Bambu PLA Basic" />
     <product line="CR-PLA Carbon" material="PLA-CF" density="1.24" diameter="1.75" nozzle-range="190-220" bed-range="50-60" bambu-parent="Bambu PLA-CF" />
-    <product line="CR-PLA Matte" material="PLA" density="1.24" diameter="1.75" nozzle-range="190-230" bed-range="No heating-60" bambu-parent="Bambu PLA Matte" />
+    <product line="CR-PLA Matte" material="PLA" density="1.24" diameter="1.75" nozzle-range="190-230" bed-range="25-60" bambu-parent="Bambu PLA Matte" />
     <product line="CR-Silk" material="PLA" density="1.24" diameter="1.75" nozzle-range="190-230" bed-range="50-60" bambu-parent="Bambu PLA Silk">
       <color name="White" hex="F5F5F5" family="White" />
       <color name="Rainbow" hex="9C27B0" family="Multi-color/Rainbow" />
@@ -1091,21 +1091,21 @@
       <color name="Blue-green" hex="2E7D32" family="Green" />
       <color name="Golden Red" hex="D4AF37" family="Gold/Bronze" />
     </product>
-    <product line="CR-TPU" material="TPU" density="1.24" diameter="1.75" nozzle-range="210-240" bed-range="50" bambu-parent="Generic TPU" />
-    <product line="CR-Wood" material="PLA" density="1.24" diameter="1.75" nozzle-range="190-230" bed-range="No heating-60" bambu-parent="Bambu PLA Wood" />
-    <product line="Ender-PLA" material="PLA" density="1.24" diameter="1.75" nozzle-range="190-230" bed-range="No heating-60" bambu-parent="Bambu PLA Basic">
+    <product line="CR-TPU" material="TPU" density="1.24" diameter="1.75" nozzle-range="210-240" bed-range="50-50" bambu-parent="Generic TPU" />
+    <product line="CR-Wood" material="PLA" density="1.24" diameter="1.75" nozzle-range="190-230" bed-range="25-60" bambu-parent="Bambu PLA Wood" />
+    <product line="Ender-PLA" material="PLA" density="1.24" diameter="1.75" nozzle-range="190-230" bed-range="25-60" bambu-parent="Bambu PLA Basic">
       <color name="White" hex="F5F5F5" family="White" />
       <color name="Black" hex="1A1A1A" family="Black" />
     </product>
-    <product line="Ender-PLA+" material="PLA" density="1.24" diameter="1.75" nozzle-range="190-230" bed-range="No heating-60" bambu-parent="Bambu PLA Basic" />
+    <product line="Ender-PLA+" material="PLA" density="1.24" diameter="1.75" nozzle-range="190-230" bed-range="25-60" bambu-parent="Bambu PLA Basic" />
     <product line="HP-ASA" material="ASA" density="1.24" diameter="1.75" nozzle-range="240-260" bed-range="80-110" bambu-parent="Bambu ASA">
       <color name="Black" hex="1A1A1A" family="Black" />
     </product>
-    <product line="HP-TPU" material="TPU" density="1.24" diameter="1.75" nozzle-range="200-220" bed-range="No heating-60" bambu-parent="Generic TPU">
+    <product line="HP-TPU" material="TPU" density="1.24" diameter="1.75" nozzle-range="200-220" bed-range="25-60" bambu-parent="Generic TPU">
       <color name="Transparent" hex="E0E8EA" family="Transparent/Natural" />
       <color name="White" hex="F5F5F5" family="White" />
     </product>
-    <product line="Hyper PETG" material="PETG" density="1.24" diameter="1.75" nozzle-range="190-260" bed-range="45" bambu-parent="Bambu PETG HF">
+    <product line="Hyper PETG" material="PETG" density="1.24" diameter="1.75" nozzle-range="190-260" bed-range="45-45" bambu-parent="Bambu PETG HF">
       <color name="Black" hex="1A1A1A" family="Black" />
       <color name="White" hex="F5F5F5" family="White" />
       <color name="Grey" hex="808487" family="Gray/Silver" />
@@ -1167,7 +1167,7 @@
   </vendor>
   <vendor name="ELEGOO" slug="elegoo" tare-grams="154" priority="1" flange-trait="cardboard-rim-printed-scale-window">
     <alias>Elegoo</alias>
-    <product line="ABS" material="ABS" density="1.05" diameter="1.75" nozzle-range="240-280" bed-range="90-100 (depends on printer and build plate type)" bambu-parent="Bambu ABS">
+    <product line="ABS" material="ABS" density="1.05" diameter="1.75" nozzle-range="240-280" bed-range="90-100" bambu-parent="Bambu ABS">
       <color name="Black" hex="1A1A1A" family="Black" />
       <color name="White" hex="F5F5F5" family="White" />
       <color name="Red" hex="D12229" family="Red" />
@@ -1184,7 +1184,7 @@
       <color name="Orange Yellow" hex="F57C00" family="Orange" />
       <color name="Navy Blue" hex="1A2B4C" family="Blue" />
     </product>
-    <product line="ASA" material="ASA" density="1.09" diameter="1.75" nozzle-range="240-270" bed-range="90-100 (depends on printer and build plate type)" bambu-parent="Bambu ASA">
+    <product line="ASA" material="ASA" density="1.09" diameter="1.75" nozzle-range="240-270" bed-range="90-100" bambu-parent="Bambu ASA">
       <color name="Deep Black" hex="1A1A1A" family="Black" />
       <color name="White" hex="F5F5F5" family="White" />
       <color name="Blue" hex="1976D2" family="Blue" />
@@ -1192,7 +1192,7 @@
       <color name="Grey" hex="808487" family="Gray/Silver" />
       <color name="Red" hex="D12229" family="Red" />
     </product>
-    <product line="ASA-CF" material="ASA-CF" density="1.13" diameter="1.75" nozzle-range="250-280" bed-range="90-100 (depends on printer and build plate type)" bambu-parent="Bambu ASA-CF">
+    <product line="ASA-CF" material="ASA-CF" density="1.13" diameter="1.75" nozzle-range="250-280" bed-range="90-100" bambu-parent="Bambu ASA-CF">
       <color name="Carbon Fiber Black" hex="1A1A1A" family="Black" />
       <color name="Carbon Fiber Grey" hex="808487" family="Gray/Silver" />
       <color name="Carbon Fiber Red" hex="D12229" family="Red" />
@@ -1203,20 +1203,20 @@
     <product line="PAHT-CF" material="PAHT-CF" density="1.24" diameter="1.75" nozzle-range="260-290" bed-range="90-110" bambu-parent="Generic PA-CF">
       <color name="Black" hex="1A1A1A" family="Black" />
     </product>
-    <product line="PC" material="PC" density="1.20" diameter="1.75" nozzle-range="250-270" bed-range="90-110 (depends on printer and build plate type)" bambu-parent="Bambu PC">
+    <product line="PC" material="PC" density="1.20" diameter="1.75" nozzle-range="250-270" bed-range="90-110" bambu-parent="Bambu PC">
       <color name="Black" hex="1A1A1A" family="Black" />
       <color name="White" hex="F5F5F5" family="White" />
       <color name="Clear Black" hex="1A1A1A" family="Black" />
       <color name="Transparent" hex="E0E8EA" family="Transparent/Natural" />
     </product>
-    <product line="PC-FR" material="PC" density="1.18" diameter="1.75" nozzle-range="260-280" bed-range="90-110 (depends on printer and build plate type)" bambu-parent="Bambu PC FR">
+    <product line="PC-FR" material="PC" density="1.18" diameter="1.75" nozzle-range="260-280" bed-range="90-110" bambu-parent="Bambu PC FR">
       <color name="Black" hex="1A1A1A" family="Black" />
       <color name="White" hex="F5F5F5" family="White" />
     </product>
-    <product line="PET-CF" material="PET-CF" density="1.32" diameter="1.75" nozzle-range="260-290" bed-range="90-110 (depends on printer and build plate type)" bambu-parent="Bambu PET-CF">
+    <product line="PET-CF" material="PET-CF" density="1.32" diameter="1.75" nozzle-range="260-290" bed-range="90-110" bambu-parent="Bambu PET-CF">
       <color name="Carbon Fiber Black" hex="1A1A1A" family="Black" />
     </product>
-    <product line="PETG Glitter" material="PETG" density="1.3" diameter="1.75" nozzle-range="240-260" bed-range="65-75 (depends on printer and build plate type)" bambu-parent="Bambu PETG Basic">
+    <product line="PETG Glitter" material="PETG" density="1.3" diameter="1.75" nozzle-range="240-260" bed-range="65-75" bambu-parent="Bambu PETG Basic">
       <color name="Glitter Black" hex="1A1A1A" family="Black" />
       <color name="Glitter Blue" hex="1976D2" family="Blue" />
       <color name="Glitter Orange" hex="F57C00" family="Orange" />
@@ -1229,7 +1229,7 @@
       <color name="Glitter Olive Green" hex="556B2F" family="Green" />
       <color name="Glitter Olive Yellow" hex="FBC02D" family="Yellow" />
     </product>
-    <product line="PETG HF" material="PETG" density="1.29" diameter="1.75" nozzle-range="230-260" bed-range="65-75 (depends on printer and build plate type)" bambu-parent="Bambu PETG HF">
+    <product line="PETG HF" material="PETG" density="1.29" diameter="1.75" nozzle-range="230-260" bed-range="65-75" bambu-parent="Bambu PETG HF">
       <color name="Black" hex="1A1A1A" family="Black" />
       <color name="White" hex="F5F5F5" family="White" />
       <color name="Grey" hex="808487" family="Gray/Silver" />
@@ -1243,7 +1243,7 @@
       <color name="Transparent" hex="E0E8EA" family="Transparent/Natural" />
       <color name="Space Grey" hex="5D6166" family="Gray/Silver" />
     </product>
-    <product line="PETG Pro" material="PETG" density="1.27" diameter="1.75" nozzle-range="230-260" bed-range="65-75 (depends on printer and build plate type)" bambu-parent="Bambu PETG Basic">
+    <product line="PETG Pro" material="PETG" density="1.27" diameter="1.75" nozzle-range="230-260" bed-range="65-75" bambu-parent="Bambu PETG Basic">
       <color name="Black" hex="1A1A1A" family="Black" />
       <color name="White" hex="F5F5F5" family="White" />
       <color name="Blue" hex="1976D2" family="Blue" />
@@ -1258,7 +1258,7 @@
       <color name="Yellow" hex="FBC02D" family="Yellow" />
       <color name="Purple" hex="7B1FA2" family="Purple" />
     </product>
-    <product line="PETG Translucent" material="PETG" density="1.24" diameter="1.75" nozzle-range="230-260" bed-range="65-75 (depends on printer and build plate type)" bambu-parent="Bambu PETG Translucent">
+    <product line="PETG Translucent" material="PETG" density="1.24" diameter="1.75" nozzle-range="230-260" bed-range="65-75" bambu-parent="Bambu PETG Translucent">
       <color name="Translucent Blue" hex="2998E5" family="Blue" />
       <color name="Translucent Green" hex="4CAF50" family="Green" />
       <color name="Translucent Orange" hex="F7882F" family="Orange" />
@@ -1274,7 +1274,7 @@
       <color name="Purple" hex="7B1FA2" family="Purple" />
       <color name="Red" hex="D12229" family="Red" />
     </product>
-    <product line="PETG-GF" material="PETG-GF" density="1.30" diameter="1.75" nozzle-range="240-270" bed-range="65-75 (depends on printer and build plate type)" bambu-parent="Bambu PETG-CF">
+    <product line="PETG-GF" material="PETG-GF" density="1.30" diameter="1.75" nozzle-range="240-270" bed-range="65-75" bambu-parent="Bambu PETG-CF">
       <color name="Glass Fiber Black" hex="1A1A1A" family="Black" />
       <color name="Glass Fiber Grey" hex="808487" family="Gray/Silver" />
       <color name="Glass Fiber White" hex="F5F5F5" family="White" />
@@ -1282,7 +1282,7 @@
     <product line="PLA" material="PLA" density="1.24" diameter="1.75" nozzle-range="190-230" bed-range="45-60" bambu-parent="Generic PLA">
       <color name="Beige" hex="D8C6A5" family="Brown/Beige" />
     </product>
-    <product line="PLA (RFID) emoji Brand Edition" material="PLA" density="1.26" diameter="1.75" nozzle-range="190-230" bed-range="35-65 (depends on printer and build plate type)" bambu-parent="Bambu PLA Basic">
+    <product line="PLA (RFID) emoji Brand Edition" material="PLA" density="1.26" diameter="1.75" nozzle-range="190-230" bed-range="35-65" bambu-parent="Bambu PLA Basic">
       <color name="Black" hex="1A1A1A" family="Black" />
       <color name="White" hex="F5F5F5" family="White" />
       <color name="Grey" hex="808487" family="Gray/Silver" />
@@ -1301,7 +1301,7 @@
       <color name="Beige" hex="D8C6A5" family="Brown/Beige" />
       <color name="Translucent" hex="DCE6E8" family="Transparent/Natural" />
     </product>
-    <product line="PLA Basic" material="PLA" density="1.2" diameter="1.75" nozzle-range="190-230" bed-range="35-65 (depends on printer and build plate type)" bambu-parent="Bambu PLA Basic">
+    <product line="PLA Basic" material="PLA" density="1.2" diameter="1.75" nozzle-range="190-230" bed-range="35-65" bambu-parent="Bambu PLA Basic">
       <color name="Black" hex="1A1A1A" family="Black" />
       <color name="Red" hex="D12229" family="Red" />
       <color name="Yellow" hex="FBC02D" family="Yellow" />
@@ -1322,27 +1322,27 @@
       <color name="Misty Blue" hex="1976D2" family="Blue" />
       <color name="Orange" hex="F57C00" family="Orange" />
     </product>
-    <product line="PLA Copper Filled" material="PLA" density="1.26" diameter="1.75" nozzle-range="190-230" bed-range="35-65 (depends on printer and build plate type)" bambu-parent="Generic PLA">
+    <product line="PLA Copper Filled" material="PLA" density="1.26" diameter="1.75" nozzle-range="190-230" bed-range="35-65" bambu-parent="Generic PLA">
       <color name="Copper Filled" hex="B87333" family="Gold/Bronze" />
     </product>
-    <product line="PLA Galaxy" material="PLA" density="1.21" diameter="1.75" nozzle-range="190-230" bed-range="35-65 (depends on printer and build plate type)" bambu-parent="Bambu PLA Galaxy">
+    <product line="PLA Galaxy" material="PLA" density="1.21" diameter="1.75" nozzle-range="190-230" bed-range="35-65" bambu-parent="Bambu PLA Galaxy">
       <color name="Galaxy Purple" hex="3F2A56" family="Purple" />
       <color name="Galaxy Black" hex="232528" family="Black" />
       <color name="Galaxy Peacock Blue" hex="1976D2" family="Blue" />
     </product>
-    <product line="PLA Glow" material="PLA" density="1.24" diameter="1.75" nozzle-range="190-230" bed-range="35-65 (depends on printer and build plate type)" bambu-parent="Bambu PLA Glow">
+    <product line="PLA Glow" material="PLA" density="1.24" diameter="1.75" nozzle-range="190-230" bed-range="35-65" bambu-parent="Bambu PLA Glow">
       <color name="Glow Blue" hex="8CE7FF" family="Blue" />
       <color name="Glow Green" hex="B2FBA5" family="Green" />
       <color name="Glow Yellow" hex="FBC02D" family="Yellow" />
       <color name="Glow Orange" hex="F57C00" family="Orange" />
       <color name="Glow Pink" hex="EC407A" family="Pink" />
     </product>
-    <product line="PLA Marble" material="PLA" density="1.23" diameter="1.75" nozzle-range="190-220" bed-range="35-65 (depends on printer and build plate type)" bambu-parent="Bambu PLA Marble">
+    <product line="PLA Marble" material="PLA" density="1.23" diameter="1.75" nozzle-range="190-220" bed-range="35-65" bambu-parent="Bambu PLA Marble">
       <color name="Marble" hex="D8D9D6" family="Gray/Silver" />
       <color name="Marble Brick Red" hex="D8D9D6" family="Gray/Silver" />
       <color name="Marble Cement Grey" hex="D8D9D6" family="Gray/Silver" />
     </product>
-    <product line="PLA Matte" material="PLA" density="1.26" diameter="1.75" nozzle-range="190-230" bed-range="35-65 (depends on printer and build plate type)" bambu-parent="Bambu PLA Matte">
+    <product line="PLA Matte" material="PLA" density="1.26" diameter="1.75" nozzle-range="190-230" bed-range="35-65" bambu-parent="Bambu PLA Matte">
       <color name="Navy Blue" hex="1A2B4C" family="Blue" />
       <color name="Matte Black" hex="212121" family="Black" />
       <color name="Matte White" hex="F5F5F5" family="White" />
@@ -1358,13 +1358,13 @@
       <color name="Earth Brown" hex="6D4C41" family="Brown/Beige" />
       <color name="Orange" hex="F57C00" family="Orange" />
     </product>
-    <product line="PLA Metallic" material="PLA" density="1.24" diameter="1.75" nozzle-range="190-230" bed-range="35-65 (depends on printer and build plate type)" bambu-parent="Bambu PLA Metal">
+    <product line="PLA Metallic" material="PLA" density="1.24" diameter="1.75" nozzle-range="190-230" bed-range="35-65" bambu-parent="Bambu PLA Metal">
       <color name="Metallic Gold" hex="D4AF37" family="Gold/Bronze" />
       <color name="Metallic Bronze" hex="8C6239" family="Gold/Bronze" />
       <color name="Metallic Blue" hex="1976D2" family="Blue" />
       <color name="Metallic Green" hex="2E7D32" family="Green" />
     </product>
-    <product line="PLA Pro" material="PLA" density="1.24" diameter="1.75" nozzle-range="180-210" bed-range="35-65 (depends on printer and build plate type)" bambu-parent="Bambu PLA Basic">
+    <product line="PLA Pro" material="PLA" density="1.24" diameter="1.75" nozzle-range="180-210" bed-range="35-65" bambu-parent="Bambu PLA Basic">
       <color name="Black" hex="1A1A1A" family="Black" />
       <color name="White" hex="F5F5F5" family="White" />
       <color name="Burgundy Red" hex="6B1D2F" family="Red" />
@@ -1380,10 +1380,10 @@
       <color name="Beige" hex="D8C6A5" family="Brown/Beige" />
       <color name="Hot Pink" hex="FF1493" family="Pink" />
     </product>
-    <product line="PLA Relievo" material="PLA" density="1.26" diameter="1.75" nozzle-range="190-230" bed-range="35-65 (depends on printer and build plate type)" bambu-parent="Generic PLA">
+    <product line="PLA Relievo" material="PLA" density="1.26" diameter="1.75" nozzle-range="190-230" bed-range="35-65" bambu-parent="Generic PLA">
       <color name="PLA Relievo Cyan" hex="00AEEF" family="Blue" />
     </product>
-    <product line="PLA Sparkle" material="PLA" density="1.23" diameter="1.75" nozzle-range="190-220" bed-range="35-65 (depends on printer and build plate type)" bambu-parent="Bambu PLA Sparkle">
+    <product line="PLA Sparkle" material="PLA" density="1.23" diameter="1.75" nozzle-range="190-220" bed-range="35-65" bambu-parent="Bambu PLA Sparkle">
       <color name="Sparkle Black" hex="222426" family="Black" />
       <color name="Sparkle Gold" hex="D4AF37" family="Gold/Bronze" />
       <color name="Sparkle Green" hex="2E7D32" family="Green" />
@@ -1392,7 +1392,7 @@
       <color name="Sparkle Turquoise" hex="30D5C8" family="Blue" />
       <color name="Sparkle Purplish Grey" hex="808487" family="Gray/Silver" />
     </product>
-    <product line="PLA Translucent" material="PLA" density="1.24" diameter="1.75" nozzle-range="210-230" bed-range="35-65 (depends on printer and build plate type)" bambu-parent="Bambu PLA Translucent">
+    <product line="PLA Translucent" material="PLA" density="1.24" diameter="1.75" nozzle-range="210-230" bed-range="35-65" bambu-parent="Bambu PLA Translucent">
       <color name="Crytal White" hex="F5F5F5" family="White" />
       <color name="Light Grey" hex="808487" family="Gray/Silver" />
       <color name="Red" hex="D12229" family="Red" />
@@ -1403,7 +1403,7 @@
       <color name="Light Purple" hex="7B1FA2" family="Purple" />
       <color name="Rose Red" hex="D12229" family="Red" />
     </product>
-    <product line="PLA Wood" material="PLA" density="1.21" diameter="1.75" nozzle-range="200-240" bed-range="35-65 (depends on printer and build plate type)" bambu-parent="Bambu PLA Wood">
+    <product line="PLA Wood" material="PLA" density="1.21" diameter="1.75" nozzle-range="200-240" bed-range="35-65" bambu-parent="Bambu PLA Wood">
       <color name="Wood filled" hex="B08354" family="Brown/Beige" />
       <color name="Light Brown" hex="6D4C41" family="Brown/Beige" />
       <color name="Walnut Wood" hex="B08354" family="Brown/Beige" />
@@ -1416,7 +1416,7 @@
       <color name="Neon Green" hex="2E7D32" family="Green" />
       <color name="Yellow" hex="FBC02D" family="Yellow" />
     </product>
-    <product line="PLA-CF" material="PLA-CF" density="1.24" diameter="1.75" nozzle-range="210-240" bed-range="35-65 (depends on printer and build plate type)" bambu-parent="Bambu PLA-CF">
+    <product line="PLA-CF" material="PLA-CF" density="1.24" diameter="1.75" nozzle-range="210-240" bed-range="35-65" bambu-parent="Bambu PLA-CF">
       <color name="Carbon Fiber Black" hex="1A1A1A" family="Black" />
       <color name="Carbon Fiber Grey" hex="808487" family="Gray/Silver" />
       <color name="Carbon Fiber Red" hex="D12229" family="Red" />
@@ -1425,10 +1425,10 @@
       <color name="Carbon Fiber Purple" hex="7B1FA2" family="Purple" />
       <color name="Carbon Fiber Brown" hex="6D4C41" family="Brown/Beige" />
     </product>
-    <product line="PPS-CF" material="PPS-CF" density="1.31" diameter="1.75" nozzle-range="290-320" bed-range="100-120 (depends on printer and build plate type)" bambu-parent="Bambu PPS-CF">
+    <product line="PPS-CF" material="PPS-CF" density="1.31" diameter="1.75" nozzle-range="290-320" bed-range="100-120" bambu-parent="Bambu PPS-CF">
       <color name="Black" hex="1A1A1A" family="Black" />
     </product>
-    <product line="Rapid PETG" material="PETG" density="1.29" diameter="1.75" nozzle-range="240-270" bed-range="65-75 (depends on printer and build plate type)" bambu-parent="Bambu PETG HF">
+    <product line="Rapid PETG" material="PETG" density="1.29" diameter="1.75" nozzle-range="240-270" bed-range="65-75" bambu-parent="Bambu PETG HF">
       <color name="Black" hex="1A1A1A" family="Black" />
       <color name="White" hex="F5F5F5" family="White" />
       <color name="Red" hex="D12229" family="Red" />
@@ -1442,7 +1442,7 @@
       <color name="Beige" hex="D8C6A5" family="Brown/Beige" />
       <color name="Space Grey" hex="5D6166" family="Gray/Silver" />
     </product>
-    <product line="Rapid PLA Plus" material="PLA" density="1.23" diameter="1.75" nozzle-range="200-230" bed-range="35-65 (depends on printer and build plate type)" bambu-parent="Generic PLA High Speed">
+    <product line="Rapid PLA Plus" material="PLA" density="1.23" diameter="1.75" nozzle-range="200-230" bed-range="35-65" bambu-parent="Generic PLA High Speed">
       <color name="Black" hex="1A1A1A" family="Black" />
       <color name="White" hex="F5F5F5" family="White" />
       <color name="Grey" hex="808487" family="Gray/Silver" />
@@ -1455,7 +1455,7 @@
       <color name="Brown" hex="6D4C41" family="Brown/Beige" />
       <color name="Beige" hex="D8C6A5" family="Brown/Beige" />
     </product>
-    <product line="Rapid TPU 95A" material="TPU" density="1.27" diameter="1.75" nozzle-range="200-230" bed-range="30-45 (depends on printer and build plate type)" bambu-parent="Bambu TPU 95A HF">
+    <product line="Rapid TPU 95A" material="TPU" density="1.27" diameter="1.75" nozzle-range="200-230" bed-range="30-45" bambu-parent="Bambu TPU 95A HF">
       <color name="Black" hex="1A1A1A" family="Black" />
       <color name="White" hex="F5F5F5" family="White" />
       <color name="Red" hex="D12229" family="Red" />
@@ -1466,7 +1466,7 @@
     <product line="TPU 72D" material="TPU" density="1.25" diameter="1.75" nozzle-range="210-240" bed-range="30-45" bambu-parent="Generic TPU for AMS">
       <color name="Black" hex="1A1A1A" family="Black" />
     </product>
-    <product line="TPU 95A" material="TPU" density="1.16" diameter="1.75" nozzle-range="220-240" bed-range="30-45 (depends on printer and build plate type)" bambu-parent="Bambu TPU 95A">
+    <product line="TPU 95A" material="TPU" density="1.16" diameter="1.75" nozzle-range="220-240" bed-range="30-45" bambu-parent="Bambu TPU 95A">
       <color name="Black" hex="1A1A1A" family="Black" />
       <color name="White" hex="F5F5F5" family="White" />
       <color name="Translucent" hex="DCE6E8" family="Transparent/Natural" />
@@ -1906,7 +1906,7 @@
     <product line="ePC" material="PC" density="1.12" diameter="1.75" nozzle-range="240-270" bed-range="80-120" bambu-parent="Bambu PC" />
     <product line="ePLA-CF" material="PLA-CF" density="1.21" diameter="1.75" nozzle-range="190-230" bed-range="45-60" bambu-parent="Bambu PLA-CF" />
     <product line="ePLA-Chameleon" material="PLA" density="1.21" diameter="1.75" nozzle-range="190-230" bed-range="45-60" bambu-parent="Generic PLA" />
-    <product line="ePLA-Gloss" material="PLA" density="1.26" diameter="1.75" nozzle-range="190-230" bed-range="60" bambu-parent="Bambu PLA Basic" />
+    <product line="ePLA-Gloss" material="PLA" density="1.26" diameter="1.75" nozzle-range="190-230" bed-range="60-60" bambu-parent="Bambu PLA Basic" />
     <product line="ePLA-HS" material="PLA" density="1.21" diameter="1.75" nozzle-range="190-230" bed-range="45-60" bambu-parent="Bambu PLA Basic" />
     <product line="ePLA-LW" material="PLA" density="1.2" diameter="1.75" nozzle-range="190-270" bed-range="45-60" bambu-parent="Bambu PLA Aero" />
     <product line="ePLA-Silk Magic" material="PLA" density="1.256" diameter="1.75" nozzle-range="190-230" bed-range="45-60" bambu-parent="Bambu PLA Silk" />
@@ -1916,7 +1916,7 @@
     <product line="eTwinkling" material="PLA" density="1.41" diameter="1.75" nozzle-range="200-230" bed-range="45-60" bambu-parent="Bambu PLA Sparkle" />
     <product line="HIPS" material="HIPS" density="1.05" diameter="1.75" nozzle-range="230-270" bed-range="100-115" bambu-parent="Generic HIPS" />
     <product line="Luminous PLA" material="PLA" density="1.2" diameter="1.75" nozzle-range="190-230" bed-range="45-60" bambu-parent="Bambu PLA Glow" />
-    <product line="PC-ESD" material="PC" density="1.22" diameter="1.75" nozzle-range="270-290" bed-range="100" bambu-parent="Bambu PC">
+    <product line="PC-ESD" material="PC" density="1.22" diameter="1.75" nozzle-range="270-290" bed-range="100-100" bambu-parent="Bambu PC">
       <color name="Black" hex="1A1A1A" family="Black" />
     </product>
     <product line="PC-HT" material="PC" density="1.23" diameter="1.75" nozzle-range="290-300" bed-range="100-110" bambu-parent="Bambu PC" />
@@ -1926,15 +1926,15 @@
     <product line="PET-FR" material="PET" density="1.24" diameter="1.75" nozzle-range="300-320" bed-range="70-90" bambu-parent="Generic PET">
       <color name="White" hex="F5F5F5" family="White" />
     </product>
-    <product line="PET-Luminous" material="PETG" density="1.27" diameter="1.75" nozzle-range="245-260" bed-range="70" bambu-parent="Generic PETG" />
+    <product line="PET-Luminous" material="PETG" density="1.27" diameter="1.75" nozzle-range="245-260" bed-range="70-70" bambu-parent="Generic PETG" />
     <product line="PETG" material="PETG" density="1.27" diameter="1.75" nozzle-range="230-260" bed-range="75-90" bambu-parent="Generic PETG">
       <color name="PETG Gold" hex="D4AF37" family="Gold/Bronze" />
     </product>
     <product line="PETG+" material="PETG" density="1.27" diameter="1.75" nozzle-range="230-250" bed-range="75-90" bambu-parent="Bambu PETG Basic" />
     <product line="PETG+HS" material="PETG" density="1.26" diameter="1.75" nozzle-range="220-260" bed-range="75-90" bambu-parent="Bambu PETG HF" />
-    <product line="PETG-Basic" material="PETG" density="1.27" diameter="1.75" nozzle-range="190-230" bed-range="70" bambu-parent="Bambu PETG Basic" />
-    <product line="PETG-ESD" material="PETG" density="1.22" diameter="1.75" nozzle-range="240-260" bed-range="70" bambu-parent="Bambu PETG Basic" />
-    <product line="PETG-Matte" material="PETG" density="1.35" diameter="1.75" nozzle-range="240-260" bed-range="70" bambu-parent="Bambu PETG Matte" />
+    <product line="PETG-Basic" material="PETG" density="1.27" diameter="1.75" nozzle-range="190-230" bed-range="70-70" bambu-parent="Bambu PETG Basic" />
+    <product line="PETG-ESD" material="PETG" density="1.22" diameter="1.75" nozzle-range="240-260" bed-range="70-70" bambu-parent="Bambu PETG Basic" />
+    <product line="PETG-Matte" material="PETG" density="1.35" diameter="1.75" nozzle-range="240-260" bed-range="70-70" bambu-parent="Bambu PETG Matte" />
     <product line="PLA" material="PLA" density="1.2" diameter="1.75" nozzle-range="190-230" bed-range="45-60" bambu-parent="Bambu PLA Basic" />
     <product line="PLA Basic" material="PLA" density="1.24" diameter="1.75" nozzle-range="210-230" bed-range="45-60" bambu-parent="Bambu PLA Basic" />
     <product line="PLA+" material="PLA" density="1.24" diameter="1.75" nozzle-range="210-230" bed-range="45-60" bambu-parent="eSUN PLA+" />
@@ -1945,7 +1945,7 @@
     <product line="PLA-Lite" material="PLA" density="1.23" diameter="1.75" nozzle-range="190-230" bed-range="45-60" bambu-parent="Bambu PLA Lite" />
     <product line="PLA-Matte" material="PLA" density="1.329" diameter="1.75" nozzle-range="190-230" bed-range="45-60" bambu-parent="Bambu PLA Matte" />
     <product line="PLA-Matte Dual" material="PLA" density="1.174" diameter="1.75" nozzle-range="215-230" bed-range="45-60" bambu-parent="Bambu PLA Matte" />
-    <product line="PLA-Matte Rainbow" material="PLA" density="1.329" diameter="1.75" nozzle-range="210-230" bed-range="65" bambu-parent="Bambu PLA Matte">
+    <product line="PLA-Matte Rainbow" material="PLA" density="1.329" diameter="1.75" nozzle-range="210-230" bed-range="65-65" bambu-parent="Bambu PLA Matte">
       <color name="Rainbow A" hex="9C27B0" family="Multi-color/Rainbow" />
       <color name="Rainbow B" hex="9C27B0" family="Multi-color/Rainbow" />
       <color name="Rainbow C" hex="9C27B0" family="Multi-color/Rainbow" />
@@ -1972,7 +1972,7 @@
     <product line="TPE-83A" material="TPE" density="1.14" diameter="1.75" nozzle-range="220-250" bed-range="45-60" bambu-parent="Bambu TPU 95A HF" />
     <product line="TPU-64D" material="TPU" density="1.21" diameter="1.75" nozzle-range="210-250" bed-range="0-60" bambu-parent="Bambu TPU 95A HF" />
     <product line="TPU-HS" material="TPU" density="1.21" diameter="1.75" nozzle-range="220-250" bed-range="45-60" bambu-parent="Bambu TPU 95A HF" />
-    <product line="Wood PLA" material="PLA" density="1.24" diameter="1.75" nozzle-range="210-230" bed-range="60" bambu-parent="Generic PLA">
+    <product line="Wood PLA" material="PLA" density="1.24" diameter="1.75" nozzle-range="210-230" bed-range="60-60" bambu-parent="Generic PLA">
       <color name="Wood PLA Cherry" hex="B08354" family="Brown/Beige" />
     </product>
   </vendor>
@@ -1980,14 +1980,14 @@
     <product line="BioFusion" material="PLA" density="1.25" diameter="1.75" nozzle-range="200-230" bed-range="20-60" bambu-parent="Bambu PLA Silk" />
     <product line="DuraPro ABS" material="ABS" density="1.06" diameter="1.75" nozzle-range="220-250" bed-range="100-110" bambu-parent="Bambu ABS" />
     <product line="DuraPro ASA" material="ASA" density="1.05" diameter="1.75" nozzle-range="220-270" bed-range="100-110" bambu-parent="Bambu ASA" />
-    <product line="DuraPro ASA CF" material="ASA-CF" density="1.14" diameter="1.75" nozzle-range="240-260" bed-range="110" bambu-parent="Bambu ASA-CF" />
-    <product line="DuraPro ASA GF" material="ASA" density="1.1" diameter="1.75" nozzle-range="230-270" bed-range="110" bambu-parent="Generic ASA" />
-    <product line="DuraPro PA12" material="PA12" density="1.01" diameter="1.75" nozzle-range="260-290" bed-range="110" bambu-parent="Generic PA" />
-    <product line="DuraPro PA12 CF" material="PA12-CF" density="1.03" diameter="1.75" nozzle-range="260-290" bed-range="110" bambu-parent="Generic PA-CF" />
-    <product line="DuraPro PC/PBT" material="PC" density="1.20" diameter="1.75" nozzle-range="260-290" bed-range="110" bambu-parent="Generic PC" />
-    <product line="DuraPro PC/PBT CF" material="PC" density="1.24" diameter="1.75" nozzle-range="265-295" bed-range="110" bambu-parent="Generic PC" />
+    <product line="DuraPro ASA CF" material="ASA-CF" density="1.14" diameter="1.75" nozzle-range="240-260" bed-range="110-110" bambu-parent="Bambu ASA-CF" />
+    <product line="DuraPro ASA GF" material="ASA" density="1.1" diameter="1.75" nozzle-range="230-270" bed-range="110-110" bambu-parent="Generic ASA" />
+    <product line="DuraPro PA12" material="PA12" density="1.01" diameter="1.75" nozzle-range="260-290" bed-range="110-110" bambu-parent="Generic PA" />
+    <product line="DuraPro PA12 CF" material="PA12-CF" density="1.03" diameter="1.75" nozzle-range="260-290" bed-range="110-110" bambu-parent="Generic PA-CF" />
+    <product line="DuraPro PC/PBT" material="PC" density="1.20" diameter="1.75" nozzle-range="260-290" bed-range="110-110" bambu-parent="Generic PC" />
+    <product line="DuraPro PC/PBT CF" material="PC" density="1.24" diameter="1.75" nozzle-range="265-295" bed-range="110-110" bambu-parent="Generic PC" />
     <product line="Flax" material="PLA" density="1.45" diameter="1.75" nozzle-range="180-240" bed-range="20-60" bambu-parent="Generic PLA" />
-    <product line="Flex Medium ESD" material="TPU" density="1.20" diameter="1.75" nozzle-range="220-250" bed-range="50" bambu-parent="Generic TPU" />
+    <product line="Flex Medium ESD" material="TPU" density="1.20" diameter="1.75" nozzle-range="220-250" bed-range="50-50" bambu-parent="Generic TPU" />
     <product line="GreenTEC" material="PLA" density="1.3" diameter="1.75" nozzle-range="200-230" bed-range="20-90" bambu-parent="Generic PLA" />
     <product line="GreenTEC Pro" material="PLA" density="1.35" diameter="1.75" nozzle-range="210-230" bed-range="20-90" bambu-parent="Generic PLA" />
     <product line="GreenTEC Pro CF" material="PLA-CF" density="1.2" diameter="1.75" nozzle-range="225-250" bed-range="20-90" bambu-parent="Generic PLA-CF" />
@@ -2005,7 +2005,7 @@
     <product line="XPETG Matt" material="PETG" density="1.41" diameter="1.75" nozzle-range="210-240" bed-range="60-90" bambu-parent="Bambu PETG Matte" />
   </vendor>
   <vendor name="Fiberlogy" slug="fiberlogy" tare-grams="200" priority="3" flange-trait="standard-spool">
-    <product line="ABS" material="ABS" density="1.05" diameter="1.75" nozzle-range="250-265" bed-range="100" bambu-parent="Bambu ABS">
+    <product line="ABS" material="ABS" density="1.05" diameter="1.75" nozzle-range="250-265" bed-range="100-100" bambu-parent="Bambu ABS">
       <color name="Graphite" hex="808487" family="Gray/Silver" />
       <color name="Light Green" hex="2E7D32" family="Green" />
       <color name="Gray" hex="808487" family="Gray/Silver" />
@@ -2026,21 +2026,21 @@
     <product line="ABS ESD" material="ABS" density="1.05" diameter="1.75" nozzle-range="250-265" bed-range="90-110" bambu-parent="Bambu ABS">
       <color name="Black" hex="1A1A1A" family="Black" />
     </product>
-    <product line="ABS Plus" material="ABS" density="1.05" diameter="1.75" nozzle-range="250-270" bed-range="100" bambu-parent="Bambu ABS">
+    <product line="ABS Plus" material="ABS" density="1.05" diameter="1.75" nozzle-range="250-270" bed-range="100-100" bambu-parent="Bambu ABS">
       <color name="Yellow" hex="FBC02D" family="Yellow" />
       <color name="Black" hex="1A1A1A" family="Black" />
       <color name="Gray" hex="808487" family="Gray/Silver" />
       <color name="White" hex="F5F5F5" family="White" />
       <color name="Red" hex="D12229" family="Red" />
     </product>
-    <product line="ABS+GF" material="ABS-GF" density="1.12" diameter="1.75" nozzle-range="270-285" bed-range="90" bambu-parent="Bambu ABS-GF">
+    <product line="ABS+GF" material="ABS-GF" density="1.12" diameter="1.75" nozzle-range="270-285" bed-range="90-90" bambu-parent="Bambu ABS-GF">
       <color name="Natural" hex="E3E0D3" family="Transparent/Natural" />
       <color name="Light Green" hex="2E7D32" family="Green" />
       <color name="Red" hex="D12229" family="Red" />
       <color name="Black" hex="1A1A1A" family="Black" />
       <color name="Gray" hex="808487" family="Gray/Silver" />
     </product>
-    <product line="ASA" material="ASA" density="1.07" diameter="1.75" nozzle-range="255-270" bed-range="110" bambu-parent="Bambu ASA">
+    <product line="ASA" material="ASA" density="1.07" diameter="1.75" nozzle-range="255-270" bed-range="110-110" bambu-parent="Bambu ASA">
       <color name="Yellow" hex="FBC02D" family="Yellow" />
       <color name="Vertigo" hex="808487" family="Gray/Silver" />
       <color name="Inox" hex="808487" family="Gray/Silver" />
@@ -2056,29 +2056,29 @@
       <color name="Blue" hex="1976D2" family="Blue" />
       <color name="Light Green" hex="2E7D32" family="Green" />
     </product>
-    <product line="ASA Matte" material="ASA" density="1.07" diameter="1.75" nozzle-range="255-270" bed-range="110" bambu-parent="Bambu ASA">
+    <product line="ASA Matte" material="ASA" density="1.07" diameter="1.75" nozzle-range="255-270" bed-range="110-110" bambu-parent="Bambu ASA">
       <color name="Graphite" hex="808487" family="Gray/Silver" />
       <color name="Natural" hex="E3E0D3" family="Transparent/Natural" />
       <color name="Olive Green" hex="556B2F" family="Green" />
       <color name="Black" hex="1A1A1A" family="Black" />
       <color name="Gray" hex="808487" family="Gray/Silver" />
     </product>
-    <product line="ASA+AF" material="ASA-Aramid" density="1.24" diameter="1.75" nozzle-range="255-270" bed-range="110" bambu-parent="Bambu ASA" />
-    <product line="BVOH" material="BVOH" density="1.14" diameter="1.75" nozzle-range="190-220" bed-range="60" bambu-parent="Generic BVOH">
+    <product line="ASA+AF" material="ASA-Aramid" density="1.24" diameter="1.75" nozzle-range="255-270" bed-range="110-110" bambu-parent="Bambu ASA" />
+    <product line="BVOH" material="BVOH" density="1.14" diameter="1.75" nozzle-range="190-220" bed-range="60-60" bambu-parent="Generic BVOH">
       <color name="Natural" hex="E3E0D3" family="Transparent/Natural" />
     </product>
-    <product line="CPE HT" material="PETG" density="1.18" diameter="1.75" nozzle-range="260-280" bed-range="120" bambu-parent="Generic PCTG" />
-    <product line="CPE HT+Ag Antibac" material="PETG" density="1.18" diameter="1.75" nozzle-range="260-280" bed-range="120" bambu-parent="Generic PCTG">
+    <product line="CPE HT" material="PETG" density="1.18" diameter="1.75" nozzle-range="260-280" bed-range="120-120" bambu-parent="Generic PCTG" />
+    <product line="CPE HT+Ag Antibac" material="PETG" density="1.18" diameter="1.75" nozzle-range="260-280" bed-range="120-120" bambu-parent="Generic PCTG">
       <color name="Natural" hex="E3E0D3" family="Transparent/Natural" />
     </product>
-    <product line="Easy ABS" material="ABS" density="1.09" diameter="1.75" nozzle-range="235-255" bed-range="100" bambu-parent="Bambu ABS">
+    <product line="Easy ABS" material="ABS" density="1.09" diameter="1.75" nozzle-range="235-255" bed-range="100-100" bambu-parent="Bambu ABS">
       <color name="Light Green Transparent" hex="E0E8EA" family="Transparent/Natural" />
       <color name="Pure Transparent" hex="E0E8EA" family="Transparent/Natural" />
       <color name="Orange Transparent" hex="E0E8EA" family="Transparent/Natural" />
       <color name="Burgundy Transparent" hex="E0E8EA" family="Transparent/Natural" />
       <color name="Navy Blue Transparent" hex="E0E8EA" family="Transparent/Natural" />
     </product>
-    <product line="Easy PETG" material="PETG" density="1.29" diameter="1.75" nozzle-range="220-250" bed-range="90" bambu-parent="Bambu PETG Basic">
+    <product line="Easy PETG" material="PETG" density="1.29" diameter="1.75" nozzle-range="220-250" bed-range="90-90" bambu-parent="Bambu PETG Basic">
       <color name="Orange Transparent" hex="E0E8EA" family="Transparent/Natural" />
       <color name="Translucent White" hex="DCE6E8" family="Transparent/Natural" />
       <color name="Silver Gray RAL 7001" hex="A8ADB2" family="Gray/Silver" />
@@ -2112,19 +2112,19 @@
       <color name="Pastel Blue" hex="1976D2" family="Blue" />
       <color name="Light Green Transparent" hex="E0E8EA" family="Transparent/Natural" />
     </product>
-    <product line="Easy PLA" material="PLA" density="1.24" diameter="1.75" nozzle-range="200-230" bed-range="60" bambu-parent="Bambu PLA Basic" />
-    <product line="FiberFlex 30D" material="TPU" density="1.07" diameter="1.75" nozzle-range="200-220" bed-range="70" bambu-parent="Generic TPU" />
-    <product line="FiberFlex 40D" material="TPU" density="1.16" diameter="1.75" nozzle-range="200-220" bed-range="70" bambu-parent="Bambu TPU 95A HF" />
+    <product line="Easy PLA" material="PLA" density="1.24" diameter="1.75" nozzle-range="200-230" bed-range="60-60" bambu-parent="Bambu PLA Basic" />
+    <product line="FiberFlex 30D" material="TPU" density="1.07" diameter="1.75" nozzle-range="200-220" bed-range="70-70" bambu-parent="Generic TPU" />
+    <product line="FiberFlex 40D" material="TPU" density="1.16" diameter="1.75" nozzle-range="200-220" bed-range="70-70" bambu-parent="Bambu TPU 95A HF" />
     <product line="FiberFlex Aero" material="TPU" density="1.16" diameter="1.75" nozzle-range="210-235" bed-range="30-70" bambu-parent="Generic TPU">
       <color name="Natural" hex="E3E0D3" family="Transparent/Natural" />
       <color name="White" hex="F5F5F5" family="White" />
       <color name="Gray" hex="808487" family="Gray/Silver" />
       <color name="Black" hex="1A1A1A" family="Black" />
     </product>
-    <product line="FiberFlex+CF" material="TPU-CF" density="1.23" diameter="1.75" nozzle-range="190-205" bed-range="80" bambu-parent="Generic TPU">
+    <product line="FiberFlex+CF" material="TPU-CF" density="1.23" diameter="1.75" nozzle-range="190-205" bed-range="80-80" bambu-parent="Generic TPU">
       <color name="Black" hex="1A1A1A" family="Black" />
     </product>
-    <product line="FiberWORKS PETG" material="PETG" density="1.29" diameter="1.75" nozzle-range="240-260" bed-range="70" bambu-parent="Bambu PETG Basic">
+    <product line="FiberWORKS PETG" material="PETG" density="1.29" diameter="1.75" nozzle-range="240-260" bed-range="70-70" bambu-parent="Bambu PETG Basic">
       <color name="Black RAL 9005" hex="1A1A1A" family="Black" />
       <color name="Yellow RAL 1003" hex="FBC02D" family="Yellow" />
       <color name="White RAL 9003" hex="F5F5F5" family="White" />
@@ -2144,13 +2144,13 @@
       <color name="Blue RAL 5017" hex="1976D2" family="Blue" />
       <color name="Black RAL 9005" hex="1A1A1A" family="Black" />
     </product>
-    <product line="HIPS" material="HIPS" density="1.04" diameter="1.75" nozzle-range="230-245" bed-range="100" bambu-parent="Generic HIPS">
+    <product line="HIPS" material="HIPS" density="1.04" diameter="1.75" nozzle-range="230-245" bed-range="100-100" bambu-parent="Generic HIPS">
       <color name="Natural" hex="E3E0D3" family="Transparent/Natural" />
       <color name="Black" hex="1A1A1A" family="Black" />
       <color name="White" hex="F5F5F5" family="White" />
       <color name="Graphite" hex="808487" family="Gray/Silver" />
     </product>
-    <product line="HS PLA Clear" material="PLA" density="1.24" diameter="1.75" nozzle-range="220-250" bed-range="60" bambu-parent="Generic PLA High Speed">
+    <product line="HS PLA Clear" material="PLA" density="1.24" diameter="1.75" nozzle-range="220-250" bed-range="60-60" bambu-parent="Generic PLA High Speed">
       <color name="Pure Transparent" hex="E0E8EA" family="Transparent/Natural" />
       <color name="Turquoise" hex="30D5C8" family="Blue" />
       <color name="Pink" hex="EC407A" family="Pink" />
@@ -2161,8 +2161,8 @@
       <color name="Burgundy" hex="6B1D2F" family="Red" />
       <color name="Blue" hex="1976D2" family="Blue" />
     </product>
-    <product line="MattFlex 40D" material="TPU" density="1.16" diameter="1.75" nozzle-range="210-230" bed-range="70" bambu-parent="Generic TPU" />
-    <product line="Nylon PA12" material="PA" density="1.01" diameter="1.75" nozzle-range="255-270" bed-range="110" bambu-parent="Generic PA">
+    <product line="MattFlex 40D" material="TPU" density="1.16" diameter="1.75" nozzle-range="210-230" bed-range="70-70" bambu-parent="Generic TPU" />
+    <product line="Nylon PA12" material="PA" density="1.01" diameter="1.75" nozzle-range="255-270" bed-range="110-110" bambu-parent="Generic PA">
       <color name="Orange" hex="F57C00" family="Orange" />
       <color name="Blue" hex="1976D2" family="Blue" />
       <color name="Yellow" hex="FBC02D" family="Yellow" />
@@ -2173,20 +2173,20 @@
       <color name="Black" hex="1A1A1A" family="Black" />
       <color name="Light Green" hex="2E7D32" family="Green" />
     </product>
-    <product line="Nylon PA12+CF" material="PA-CF" density="1.07" diameter="1.75" nozzle-range="255-270" bed-range="110" bambu-parent="Bambu PA-CF">
+    <product line="Nylon PA12+CF" material="PA-CF" density="1.07" diameter="1.75" nozzle-range="255-270" bed-range="110-110" bambu-parent="Bambu PA-CF">
       <color name="Black" hex="1A1A1A" family="Black" />
     </product>
-    <product line="Nylon PA12+GF" material="PA-GF" density="1.13" diameter="1.75" nozzle-range="255-270" bed-range="110" bambu-parent="Generic PA">
+    <product line="Nylon PA12+GF" material="PA-GF" density="1.13" diameter="1.75" nozzle-range="255-270" bed-range="110-110" bambu-parent="Generic PA">
       <color name="Red" hex="D12229" family="Red" />
       <color name="Light Green" hex="2E7D32" family="Green" />
       <color name="Natural" hex="E3E0D3" family="Transparent/Natural" />
       <color name="Black" hex="1A1A1A" family="Black" />
     </product>
-    <product line="PC/ABS" material="PC-ABS" density="1.07" diameter="1.75" nozzle-range="260-280" bed-range="100" bambu-parent="Bambu ABS">
+    <product line="PC/ABS" material="PC-ABS" density="1.07" diameter="1.75" nozzle-range="260-280" bed-range="100-100" bambu-parent="Bambu ABS">
       <color name="Black" hex="1A1A1A" family="Black" />
       <color name="Natural" hex="E3E0D3" family="Transparent/Natural" />
     </product>
-    <product line="PCTG" material="PCTG" density="1.23" diameter="1.75" nozzle-range="250-270" bed-range="90" bambu-parent="Generic PCTG">
+    <product line="PCTG" material="PCTG" density="1.23" diameter="1.75" nozzle-range="250-270" bed-range="90-90" bambu-parent="Generic PCTG">
       <color name="White" hex="F5F5F5" family="White" />
       <color name="Black" hex="1A1A1A" family="Black" />
       <color name="Inox" hex="808487" family="Gray/Silver" />
@@ -2202,26 +2202,26 @@
       <color name="Vertigo" hex="808487" family="Gray/Silver" />
       <color name="Navy Blue Transparent" hex="E0E8EA" family="Transparent/Natural" />
     </product>
-    <product line="PCTG+CF" material="PCTG-CF" density="1.28" diameter="1.75" nozzle-range="250-270" bed-range="100" bambu-parent="Generic PCTG">
+    <product line="PCTG+CF" material="PCTG-CF" density="1.28" diameter="1.75" nozzle-range="250-270" bed-range="100-100" bambu-parent="Generic PCTG">
       <color name="Black" hex="1A1A1A" family="Black" />
     </product>
-    <product line="PCTG+GF" material="PCTG-GF" density="1.31" diameter="1.75" nozzle-range="250-270" bed-range="100" bambu-parent="Generic PCTG">
+    <product line="PCTG+GF" material="PCTG-GF" density="1.31" diameter="1.75" nozzle-range="250-270" bed-range="100-100" bambu-parent="Generic PCTG">
       <color name="Black" hex="1A1A1A" family="Black" />
       <color name="Natural" hex="E3E0D3" family="Transparent/Natural" />
     </product>
-    <product line="PEI 9085" material="PEI" density="1.34" diameter="1.75" nozzle-range="350-380" bed-range="160">
+    <product line="PEI 9085" material="PEI" density="1.34" diameter="1.75" nozzle-range="350-380" bed-range="160-160">
       <color name="Natural" hex="E3E0D3" family="Transparent/Natural" />
       <color name="Black" hex="1A1A1A" family="Black" />
     </product>
-    <product line="PETG ESD" material="PETG" density="1.3" diameter="1.75" nozzle-range="250-265" bed-range="85" bambu-parent="Bambu PETG Basic">
+    <product line="PETG ESD" material="PETG" density="1.3" diameter="1.75" nozzle-range="250-265" bed-range="85-85" bambu-parent="Bambu PETG Basic">
       <color name="Black" hex="1A1A1A" family="Black" />
     </product>
-    <product line="PETG FR V0" material="PETG" density="1.26" diameter="1.75" nozzle-range="220-250" bed-range="90" bambu-parent="Bambu PETG Basic">
+    <product line="PETG FR V0" material="PETG" density="1.26" diameter="1.75" nozzle-range="220-250" bed-range="90-90" bambu-parent="Bambu PETG Basic">
       <color name="Black" hex="1A1A1A" family="Black" />
       <color name="Natural" hex="E3E0D3" family="Transparent/Natural" />
       <color name="Gray" hex="808487" family="Gray/Silver" />
     </product>
-    <product line="PETG Matte" material="PETG" density="1.29" diameter="1.75" nozzle-range="250-270" bed-range="90" bambu-parent="Bambu PETG Matte">
+    <product line="PETG Matte" material="PETG" density="1.29" diameter="1.75" nozzle-range="250-270" bed-range="90-90" bambu-parent="Bambu PETG Matte">
       <color name="White" hex="F5F5F5" family="White" />
       <color name="Gray" hex="808487" family="Gray/Silver" />
       <color name="Graphite" hex="808487" family="Gray/Silver" />
@@ -2236,23 +2236,23 @@
       <color name="Pastel Lilac" hex="7B1FA2" family="Purple" />
       <color name="Green" hex="2E7D32" family="Green" />
     </product>
-    <product line="PETG+CF" material="PETG-CF" density="1.32" diameter="1.75" nozzle-range="230-260" bed-range="90" bambu-parent="Bambu PETG-CF">
+    <product line="PETG+CF" material="PETG-CF" density="1.32" diameter="1.75" nozzle-range="230-260" bed-range="90-90" bambu-parent="Bambu PETG-CF">
       <color name="Black" hex="1A1A1A" family="Black" />
     </product>
-    <product line="PETG+PTFE" material="PETG" density="1.32" diameter="1.75" nozzle-range="220-240" bed-range="90" bambu-parent="Bambu PETG Basic">
+    <product line="PETG+PTFE" material="PETG" density="1.32" diameter="1.75" nozzle-range="220-240" bed-range="90-90" bambu-parent="Bambu PETG Basic">
       <color name="Black" hex="1A1A1A" family="Black" />
       <color name="Natural" hex="E3E0D3" family="Transparent/Natural" />
     </product>
-    <product line="PLA FiberSatin" material="PLA" density="1.2" diameter="1.75" nozzle-range="200-230" bed-range="60" bambu-parent="Bambu PLA Basic" />
-    <product line="PLA FiberSilk" material="PLA" density="1.22" diameter="1.75" nozzle-range="210-230" bed-range="60" bambu-parent="Bambu PLA Silk" />
-    <product line="PLA FiberWood" material="PLA" density="1.30" diameter="1.75" nozzle-range="190-210" bed-range="60" bambu-parent="Bambu PLA Wood">
+    <product line="PLA FiberSatin" material="PLA" density="1.2" diameter="1.75" nozzle-range="200-230" bed-range="60-60" bambu-parent="Bambu PLA Basic" />
+    <product line="PLA FiberSilk" material="PLA" density="1.22" diameter="1.75" nozzle-range="210-230" bed-range="60-60" bambu-parent="Bambu PLA Silk" />
+    <product line="PLA FiberWood" material="PLA" density="1.30" diameter="1.75" nozzle-range="190-210" bed-range="60-60" bambu-parent="Bambu PLA Wood">
       <color name="Brown" hex="6D4C41" family="Brown/Beige" />
       <color name="Natural" hex="E3E0D3" family="Transparent/Natural" />
       <color name="Black" hex="1A1A1A" family="Black" />
       <color name="Carmine" hex="808487" family="Gray/Silver" />
       <color name="White" hex="F5F5F5" family="White" />
     </product>
-    <product line="PLA Impact" material="PLA" density="1.22" diameter="1.75" nozzle-range="220-245" bed-range="60" bambu-parent="Bambu PLA Tough+">
+    <product line="PLA Impact" material="PLA" density="1.22" diameter="1.75" nozzle-range="220-245" bed-range="60-60" bambu-parent="Bambu PLA Tough+">
       <color name="Graphite" hex="808487" family="Gray/Silver" />
       <color name="Blue" hex="1976D2" family="Blue" />
       <color name="Gray" hex="808487" family="Gray/Silver" />
@@ -2268,7 +2268,7 @@
       <color name="Red" hex="D12229" family="Red" />
       <color name="Black" hex="1A1A1A" family="Black" />
     </product>
-    <product line="PLA Matte" material="PLA" density="1.24" diameter="1.75" nozzle-range="200-230" bed-range="60" bambu-parent="Bambu PLA Matte">
+    <product line="PLA Matte" material="PLA" density="1.24" diameter="1.75" nozzle-range="200-230" bed-range="60-60" bambu-parent="Bambu PLA Matte">
       <color name="Pastel Yellow" hex="FBC02D" family="Yellow" />
       <color name="Graphite" hex="808487" family="Gray/Silver" />
       <color name="Gray" hex="808487" family="Gray/Silver" />
@@ -2285,14 +2285,14 @@
       <color name="Pastel Pink" hex="EC407A" family="Pink" />
       <color name="Pastel Blue" hex="1976D2" family="Blue" />
     </product>
-    <product line="PLA Mineral" material="PLA" density="1.38" diameter="1.75" nozzle-range="190-210" bed-range="60" bambu-parent="Bambu PLA Marble">
+    <product line="PLA Mineral" material="PLA" density="1.38" diameter="1.75" nozzle-range="190-210" bed-range="60-60" bambu-parent="Bambu PLA Marble">
       <color name="Natural" hex="E3E0D3" family="Transparent/Natural" />
       <color name="White" hex="F5F5F5" family="White" />
       <color name="Marble" hex="D8D9D6" family="Gray/Silver" />
       <color name="Concrete" hex="808487" family="Gray/Silver" />
       <color name="Black" hex="1A1A1A" family="Black" />
     </product>
-    <product line="PLA+CF" material="PLA-CF" density="1.26" diameter="1.75" nozzle-range="210-230" bed-range="60" bambu-parent="Bambu PLA-CF">
+    <product line="PLA+CF" material="PLA-CF" density="1.26" diameter="1.75" nozzle-range="210-230" bed-range="60-60" bambu-parent="Bambu PLA-CF">
       <color name="Black" hex="1A1A1A" family="Black" />
     </product>
     <product line="PP" material="PP" density="1.05" diameter="1.75" nozzle-range="220-250" bed-range="45-60" bambu-parent="Generic PP">
@@ -2319,26 +2319,26 @@
       <color name="Yellow" hex="FBC02D" family="Yellow" />
       <color name="Graphite" hex="808487" family="Gray/Silver" />
     </product>
-    <product line="PVB FiberSmooth" material="PVB" density="1.1" diameter="1.75" nozzle-range="215-225" bed-range="75" bambu-parent="Generic PLA">
+    <product line="PVB FiberSmooth" material="PVB" density="1.1" diameter="1.75" nozzle-range="215-225" bed-range="75-75" bambu-parent="Generic PLA">
       <color name="Black" hex="1A1A1A" family="Black" />
       <color name="Gray" hex="808487" family="Gray/Silver" />
       <color name="Graphite" hex="808487" family="Gray/Silver" />
       <color name="Blue" hex="1976D2" family="Blue" />
       <color name="Red" hex="D12229" family="Red" />
     </product>
-    <product line="rABS" material="ABS" density="1.05" diameter="1.75" nozzle-range="220-250" bed-range="100" bambu-parent="Bambu ABS">
+    <product line="rABS" material="ABS" density="1.05" diameter="1.75" nozzle-range="220-250" bed-range="100-100" bambu-parent="Bambu ABS">
       <color name="Anthracite" hex="808487" family="Gray/Silver" />
     </product>
-    <product line="rASA" material="ASA" density="1.05" diameter="1.75" nozzle-range="220-250" bed-range="100" bambu-parent="Bambu ASA">
+    <product line="rASA" material="ASA" density="1.05" diameter="1.75" nozzle-range="220-250" bed-range="100-100" bambu-parent="Bambu ASA">
       <color name="Natural" hex="E3E0D3" family="Transparent/Natural" />
     </product>
-    <product line="rNylon" material="PA" density="1.01" diameter="1.75" nozzle-range="255-270" bed-range="110" bambu-parent="Generic PA">
+    <product line="rNylon" material="PA" density="1.01" diameter="1.75" nozzle-range="255-270" bed-range="110-110" bambu-parent="Generic PA">
       <color name="Anthracite" hex="808487" family="Gray/Silver" />
     </product>
-    <product line="rPETG" material="PETG" density="1.29" diameter="1.75" nozzle-range="220-250" bed-range="90" bambu-parent="Bambu PETG Basic">
+    <product line="rPETG" material="PETG" density="1.29" diameter="1.75" nozzle-range="220-250" bed-range="90-90" bambu-parent="Bambu PETG Basic">
       <color name="Anthracite" hex="808487" family="Gray/Silver" />
     </product>
-    <product line="rPLA" material="PLA" density="1.24" diameter="1.75" nozzle-range="210-230" bed-range="60" bambu-parent="Bambu PLA Basic">
+    <product line="rPLA" material="PLA" density="1.24" diameter="1.75" nozzle-range="210-230" bed-range="60-60" bambu-parent="Bambu PLA Basic">
       <color name="Anthracite" hex="808487" family="Gray/Silver" />
     </product>
     <product line="rPP" material="PP" density="1.05" diameter="1.75" nozzle-range="220-250" bed-range="45-60" bambu-parent="Generic PP">
@@ -2575,7 +2575,7 @@
       <color name="Southern Pine" hex="2E7D32" family="Green" />
       <color name="Terracotta" hex="C66345" family="Orange" />
     </product>
-    <product line="Vinyl 303" material="PVC" density="1.35" diameter="1.75" nozzle-range="215-230" bed-range="80">
+    <product line="Vinyl 303" material="PVC" density="1.35" diameter="1.75" nozzle-range="215-230" bed-range="80-80">
       <color name="Black" hex="1A1A1A" family="Black" />
       <color name="Natural" hex="E3E0D3" family="Transparent/Natural" />
     </product>
@@ -2587,7 +2587,7 @@
     <product line="ASA" material="ASA" density="1.24" diameter="1.75" nozzle-range="240-270" bed-range="100-120" bambu-parent="Generic ASA">
       <color name="ASA Multicolor Burnt Titanium" hex="C6A678" family="Brown/Beige" />
     </product>
-    <product line="HS PETG" material="PETG" density="1.24" diameter="1.75" nozzle-range="220-270" bed-range="RT-60" bambu-parent="Bambu PETG HF" />
+    <product line="HS PETG" material="PETG" density="1.24" diameter="1.75" nozzle-range="220-270" bed-range="25-60" bambu-parent="Bambu PETG HF" />
     <product line="HS PLA" material="PLA" density="1.24" diameter="1.75" nozzle-range="190-240" bed-range="25-60" bambu-parent="Bambu PLA Basic" />
     <product line="HS PLA Multicolor" material="PLA" density="1.24" diameter="1.75" nozzle-range="190-240" bed-range="25-60" bambu-parent="Bambu PLA Basic">
       <color name="Burnt Titanium" hex="C6A678" family="Brown/Beige" />
@@ -2598,19 +2598,19 @@
       <color name="Nebula Purple" hex="7B1FA2" family="Purple" />
     </product>
     <product line="PC" material="PC" density="1.24" diameter="1.75" nozzle-range="240-260" bed-range="100-120" bambu-parent="Bambu PC" />
-    <product line="PETG" material="PETG" density="1.24" diameter="1.75" nozzle-range="220-240" bed-range="RT-80" bambu-parent="Bambu PETG Basic" />
+    <product line="PETG" material="PETG" density="1.24" diameter="1.75" nozzle-range="220-240" bed-range="25-80" bambu-parent="Bambu PETG Basic" />
     <product line="PETG Pro" material="PETG" density="1.24" diameter="1.75" nozzle-range="220-270" bed-range="70-80" bambu-parent="Bambu PETG Basic">
       <color name="White" hex="F5F5F5" family="White" />
       <color name="Black" hex="1A1A1A" family="Black" />
     </product>
     <product line="PETG-CF" material="PETG-CF" density="1.24" diameter="1.75" nozzle-range="230-250" bed-range="50-80" bambu-parent="Bambu PETG-CF" />
-    <product line="PLA" material="PLA" density="1.24" diameter="1.75" nozzle-range="190-220" bed-range="RT-60" bambu-parent="Bambu PLA Basic" />
-    <product line="PLA Matte" material="PLA" density="1.24" diameter="1.75" nozzle-range="190-230" bed-range="RT-60" bambu-parent="Bambu PLA Matte" />
-    <product line="PLA Pro" material="PLA" density="1.24" diameter="1.75" nozzle-range="190-220" bed-range="RT-60" bambu-parent="Bambu PLA Basic" />
-    <product line="PLA Silk" material="PLA" density="1.24" diameter="1.75" nozzle-range="190-220" bed-range="RT-60" bambu-parent="Bambu PLA Silk" />
+    <product line="PLA" material="PLA" density="1.24" diameter="1.75" nozzle-range="190-220" bed-range="25-60" bambu-parent="Bambu PLA Basic" />
+    <product line="PLA Matte" material="PLA" density="1.24" diameter="1.75" nozzle-range="190-230" bed-range="25-60" bambu-parent="Bambu PLA Matte" />
+    <product line="PLA Pro" material="PLA" density="1.24" diameter="1.75" nozzle-range="190-220" bed-range="25-60" bambu-parent="Bambu PLA Basic" />
+    <product line="PLA Silk" material="PLA" density="1.24" diameter="1.75" nozzle-range="190-220" bed-range="25-60" bambu-parent="Bambu PLA Silk" />
     <product line="PLA-CF" material="PLA-CF" density="1.24" diameter="1.75" nozzle-range="200-230" bed-range="30-60" bambu-parent="Bambu PLA-CF" />
-    <product line="PVA" material="PVA" density="1.24" diameter="1.75" nozzle-range="210-230" bed-range="RT-60" bambu-parent="Bambu PVA" />
-    <product line="TPU 95A" material="TPU" density="1.24" diameter="1.75" nozzle-range="200-240" bed-range="RT-60" bambu-parent="Bambu TPU 95A" />
+    <product line="PVA" material="PVA" density="1.24" diameter="1.75" nozzle-range="210-230" bed-range="25-60" bambu-parent="Bambu PVA" />
+    <product line="TPU 95A" material="TPU" density="1.24" diameter="1.75" nozzle-range="200-240" bed-range="25-60" bambu-parent="Bambu TPU 95A" />
   </vendor>
   <vendor name="Formfutura" slug="formfutura" tare-grams="200" priority="3" flange-trait="standard-spool">
     <product line="ABSpro" material="ABS" density="1.05" diameter="1.75" nozzle-range="230-255" bed-range="100-110" bambu-parent="Bambu ABS" />
@@ -2644,7 +2644,7 @@
     <product line="CarbonFil" material="PETG-CF" density="1.32" diameter="1.75" nozzle-range="230-275" bed-range="80-90" bambu-parent="Bambu PETG-CF" />
     <product line="CarbonFil CF03" material="PETG-CF" density="1.29" diameter="1.75" nozzle-range="240-280" bed-range="75-85" bambu-parent="Bambu PETG-CF" />
     <product line="Centaur PP" material="PP" density="0.89" diameter="1.75" nozzle-range="245-270" bed-range="80-85" bambu-parent="Generic PP" />
-    <product line="EasyFil ABS" material="ABS" density="1.05" diameter="1.75" nozzle-range="230-255" bed-range="100" bambu-parent="Bambu ABS" />
+    <product line="EasyFil ABS" material="ABS" density="1.05" diameter="1.75" nozzle-range="230-255" bed-range="100-100" bambu-parent="Bambu ABS" />
     <product line="EasyFil ABS - Glow in the Dark" material="ABS" density="1.03" diameter="1.75" nozzle-range="230-255" bed-range="45-60" bambu-parent="Bambu ABS">
       <color name="Glow Green" hex="B2FBA5" family="Green" />
     </product>
@@ -2660,7 +2660,7 @@
     <product line="Galaxy PLA" material="PLA" density="1.24" diameter="1.75" nozzle-range="185-215" bed-range="50-60" bambu-parent="Bambu PLA Galaxy" />
     <product line="HDglass" material="PETG" density="1.27" diameter="1.75" nozzle-range="235-260" bed-range="80-90" bambu-parent="Bambu PETG Translucent" />
     <product line="High Gloss PLA" material="PLA" density="1.22" diameter="1.75" nozzle-range="210-240" bed-range="40-60" bambu-parent="Bambu PLA Silk" />
-    <product line="High Gloss PLA ColorMorph" material="PLA" density="1.24" diameter="1.75" nozzle-range="215-245" bed-range="60" bambu-parent="Bambu PLA Silk" />
+    <product line="High Gloss PLA ColorMorph" material="PLA" density="1.24" diameter="1.75" nozzle-range="215-245" bed-range="60-60" bambu-parent="Bambu PLA Silk" />
     <product line="Kratos PC" material="PC" density="1.20" diameter="1.75" nozzle-range="290-320" bed-range="100-130" bambu-parent="Bambu PC" />
     <product line="Kratos PC CF10" material="PC-CF" density="1.22" diameter="1.75" nozzle-range="270-310" bed-range="100-130" bambu-parent="Bambu PC" />
     <product line="Matt PLA" material="PLA" density="1.38" diameter="1.75" nozzle-range="215-235" bed-range="50-60" bambu-parent="Bambu PLA Matte" />
@@ -2808,7 +2808,7 @@
     </product>
   </vendor>
   <vendor name="Gizmo Dorks" slug="gizmo-dorks" tare-grams="200" priority="3" flange-trait="standard-spool">
-    <product line="HIPS" material="HIPS" density="1.24" diameter="1.75" nozzle-range="230-250" bed-range="110" bambu-parent="Generic HIPS">
+    <product line="HIPS" material="HIPS" density="1.24" diameter="1.75" nozzle-range="230-250" bed-range="110-110" bambu-parent="Generic HIPS">
       <color name="HIPS Black" hex="1A1A1A" family="Black" />
     </product>
     <product line="POM" material="POM" density="1.24" diameter="1.75" nozzle-range="210-220" bed-range="100-130" bambu-parent="Generic PP">
@@ -3034,10 +3034,10 @@
     <product line="ABS+ High Speed" material="ABS" density="1.24" diameter="1.75" nozzle-range="245-265" bed-range="90-100" bambu-parent="Bambu ABS">
       <color name="Silver" hex="A8ADB2" family="Gray/Silver" />
     </product>
-    <product line="ABS-GF" material="ABS-GF" density="1.24" diameter="1.75" nozzle-range="250-290" bed-range="60" bambu-parent="Bambu ABS-GF">
+    <product line="ABS-GF" material="ABS-GF" density="1.24" diameter="1.75" nozzle-range="250-290" bed-range="60-60" bambu-parent="Bambu ABS-GF">
       <color name="Gray" hex="808487" family="Gray/Silver" />
     </product>
-    <product line="ASA" material="ASA" density="1.24" diameter="1.75" nozzle-range="220-260" bed-range="110" bambu-parent="Bambu ASA">
+    <product line="ASA" material="ASA" density="1.24" diameter="1.75" nozzle-range="220-260" bed-range="110-110" bambu-parent="Bambu ASA">
       <color name="Jet Black" hex="111111" family="Black" />
       <color name="Yellow" hex="FBC02D" family="Yellow" />
       <color name="Brown" hex="6D4C41" family="Brown/Beige" />
@@ -3067,7 +3067,7 @@
       <color name="Ash Gray" hex="6E7275" family="Gray/Silver" />
       <color name="Denim" hex="808487" family="Gray/Silver" />
     </product>
-    <product line="PETG" material="PETG" density="1.24" diameter="1.75" nozzle-range="230-250" bed-range="80" bambu-parent="Bambu PETG Basic">
+    <product line="PETG" material="PETG" density="1.24" diameter="1.75" nozzle-range="230-250" bed-range="80-80" bambu-parent="Bambu PETG Basic">
       <color name="White" hex="F5F5F5" family="White" />
       <color name="Black" hex="1A1A1A" family="Black" />
       <color name="Yellow" hex="FBC02D" family="Yellow" />
@@ -3081,7 +3081,7 @@
       <color name="Translucent Green" hex="4CAF50" family="Green" />
       <color name="Translucent Magenta" hex="DCE6E8" family="Transparent/Natural" />
     </product>
-    <product line="PETG+" material="PETG" density="1.24" diameter="1.75" nozzle-range="230-250" bed-range="80" bambu-parent="Bambu PETG Basic">
+    <product line="PETG+" material="PETG" density="1.24" diameter="1.75" nozzle-range="230-250" bed-range="80-80" bambu-parent="Bambu PETG Basic">
       <color name="Black" hex="1A1A1A" family="Black" />
       <color name="Green" hex="2E7D32" family="Green" />
       <color name="True Red" hex="D12229" family="Red" />
@@ -3090,13 +3090,13 @@
       <color name="White" hex="F5F5F5" family="White" />
       <color name="Blue" hex="1976D2" family="Blue" />
     </product>
-    <product line="PETG+ High Speed" material="PETG" density="1.24" diameter="1.75" nozzle-range="230-250" bed-range="80" bambu-parent="Bambu PETG HF">
+    <product line="PETG+ High Speed" material="PETG" density="1.24" diameter="1.75" nozzle-range="230-250" bed-range="80-80" bambu-parent="Bambu PETG HF">
       <color name="Black" hex="1A1A1A" family="Black" />
       <color name="Blue" hex="1976D2" family="Blue" />
       <color name="Red" hex="D12229" family="Red" />
       <color name="Transparent Green" hex="E0E8EA" family="Transparent/Natural" />
     </product>
-    <product line="PETG-CF" material="PETG-CF" density="1.24" diameter="1.75" nozzle-range="250-290" bed-range="60" bambu-parent="Bambu PETG-CF">
+    <product line="PETG-CF" material="PETG-CF" density="1.24" diameter="1.75" nozzle-range="250-290" bed-range="60-60" bambu-parent="Bambu PETG-CF">
       <color name="Black" hex="1A1A1A" family="Black" />
       <color name="Antique Brass" hex="B5A642" family="Gold/Bronze" />
     </product>
@@ -3770,7 +3770,7 @@
     <product line="ASA" material="ASA" density="1.24" diameter="1.75" nozzle-range="240-270" bed-range="70-95" bambu-parent="Generic ASA">
       <color name="Orange" hex="F57C00" family="Orange" />
     </product>
-    <product line="Easy Nylon" material="PA" density="1.12" diameter="1.75" nozzle-range="245-260" bed-range="50" bambu-parent="Generic PA">
+    <product line="Easy Nylon" material="PA" density="1.12" diameter="1.75" nozzle-range="245-260" bed-range="50-50" bambu-parent="Generic PA">
       <color name="Black" hex="1A1A1A" family="Black" />
       <color name="Gray" hex="808487" family="Gray/Silver" />
     </product>
@@ -3986,7 +3986,7 @@
   <vendor name="Phrozen" slug="phrozen" tare-grams="195" priority="3" flange-trait="black-plastic-or-cardboard-spool">
     <alias>PHROZEN</alias>
     <alias>phrozen3d</alias>
-    <product line="PLA HS" material="PLA" density="1.24" diameter="1.75" nozzle-range="190-220" bed-range="45-60 (PEI)" bambu-parent="Generic PLA High Speed">
+    <product line="PLA HS" material="PLA" density="1.24" diameter="1.75" nozzle-range="190-220" bed-range="45-60" bambu-parent="Generic PLA High Speed">
       <color name="PLA HS Black" hex="1A1A1A" family="Black" />
       <color name="PLA HS Grey" hex="808487" family="Gray/Silver" />
     </product>
@@ -3997,7 +3997,7 @@
     <alias>PolyLite</alias>
     <alias>PolyMax</alias>
     <alias>PolySonic</alias>
-    <product line="ABS Max" material="ABS" density="1.06" diameter="1.75" nozzle-range="270-300" bed-range="120" bambu-parent="PolyLite ABS">
+    <product line="ABS Max" material="ABS" density="1.06" diameter="1.75" nozzle-range="270-300" bed-range="120-120" bambu-parent="PolyLite ABS">
       <color name="Black" hex="1A1A1A" family="Black" />
       <color name="White" hex="F5F5F5" family="White" />
       <color name="Grey" hex="808487" family="Gray/Silver" />
@@ -4678,7 +4678,7 @@
       <color name="Black (The Original Carbon Fiber Composite PLA)" hex="1A1A1A" family="Black" />
       <color name="Black (Recycled Carbon Fiber PLA)" hex="1A1A1A" family="Black" />
     </product>
-    <product line="Conductive PLA" material="PLA" density="1.24" diameter="1.75" nozzle-range="210-230" bed-range="60" bambu-parent="Generic PLA">
+    <product line="Conductive PLA" material="PLA" density="1.24" diameter="1.75" nozzle-range="210-230" bed-range="60-60" bambu-parent="Generic PLA">
       <color name="Black" hex="1A1A1A" family="Black" />
     </product>
     <product line="Flexible TPU" material="TPU" density="1.24" diameter="1.75" nozzle-range="190-230" bed-range="45-60" bambu-parent="Generic TPU">
@@ -4777,13 +4777,13 @@
       <color name="Burgundy" hex="6B1D2F" family="Red" />
       <color name="Gold" hex="D4AF37" family="Gold/Bronze" />
     </product>
-    <product line="Static Dissipative Carbon Fiber PLA" material="PLA" density="1.14" diameter="1.75" nozzle-range="210-230" bed-range="60" bambu-parent="Generic PLA">
+    <product line="Static Dissipative Carbon Fiber PLA" material="PLA" density="1.14" diameter="1.75" nozzle-range="210-230" bed-range="60-60" bambu-parent="Generic PLA">
       <color name="Black" hex="1A1A1A" family="Black" />
     </product>
     <product line="Static Dissipative PETG" material="PETG" density="1.2" diameter="1.75" nozzle-range="250-290" bed-range="70-80" bambu-parent="Generic PETG">
       <color name="Black" hex="1A1A1A" family="Black" />
     </product>
-    <product line="Static Dissipative PLA" material="PLA" density="1.24" diameter="1.75" nozzle-range="210-230" bed-range="60" bambu-parent="Generic PLA">
+    <product line="Static Dissipative PLA" material="PLA" density="1.24" diameter="1.75" nozzle-range="210-230" bed-range="60-60" bambu-parent="Generic PLA">
       <color name="Black" hex="1A1A1A" family="Black" />
     </product>
   </vendor>
@@ -4848,7 +4848,7 @@
       <color name="Prusa Galaxy Black" hex="232528" family="Black" />
       <color name="Jet Black" hex="111111" family="Black" />
     </product>
-    <product line="PETG Carbon Fiber" material="PETG-CF" density="1.24" diameter="1.75" nozzle-range="255-275" bed-range="90 +/- 10" bambu-parent="Bambu PETG-CF">
+    <product line="PETG Carbon Fiber" material="PETG-CF" density="1.24" diameter="1.75" nozzle-range="255-275" bed-range="80-100" bambu-parent="Bambu PETG-CF">
       <color name="Black" hex="1A1A1A" family="Black" />
     </product>
     <product line="PETG Magnetite 40%" material="PETG" density="1.82" diameter="1.75" nozzle-range="265-275" bed-range="90-110" bambu-parent="Bambu PETG Basic">
@@ -4986,7 +4986,7 @@
       <color name="Ultra Blue" hex="1976D2" family="Blue" />
       <color name="White" hex="F5F5F5" family="White" />
     </product>
-    <product line="Carbon Fiber ABS" material="ABS-CF" density="1.02" diameter="1.75" nozzle-range="230-240" bed-range="110" bambu-parent="Bambu ABS">
+    <product line="Carbon Fiber ABS" material="ABS-CF" density="1.02" diameter="1.75" nozzle-range="230-240" bed-range="110-110" bambu-parent="Bambu ABS">
       <color name="Black" hex="1A1A1A" family="Black" />
     </product>
     <product line="Carbon Fiber Nylon" material="PA-CF" density="1.10" diameter="1.75" nozzle-range="240-260" bed-range="90-100" bambu-parent="Bambu PA6-CF">
@@ -5069,7 +5069,7 @@
     <product line="TPU 100A" material="TPU" density="1.24" diameter="1.75" nozzle-range="230-250" bed-range="60-80" bambu-parent="Bambu TPU 95A HF" />
   </vendor>
   <vendor name="QIDI Tech" slug="qidi-tech" tare-grams="200" priority="3" flange-trait="standard-spool">
-    <product line="ABS Rapido" material="ABS" density="1.24" diameter="1.75" nozzle-range="220-250" bed-range="90-110 (filament guide)" bambu-parent="Bambu ABS">
+    <product line="ABS Rapido" material="ABS" density="1.24" diameter="1.75" nozzle-range="220-250" bed-range="90-110" bambu-parent="Bambu ABS">
       <color name="Black" hex="1A1A1A" family="Black" />
       <color name="White" hex="F5F5F5" family="White" />
       <color name="Red" hex="D12229" family="Red" />
@@ -5078,7 +5078,7 @@
       <color name="Blue" hex="1976D2" family="Blue" />
       <color name="Green" hex="2E7D32" family="Green" />
     </product>
-    <product line="ABS Rapido Metal" material="ABS" density="1.24" diameter="1.75" nozzle-range="220-250" bed-range="80-100 (with glue)" bambu-parent="Bambu ABS">
+    <product line="ABS Rapido Metal" material="ABS" density="1.24" diameter="1.75" nozzle-range="220-250" bed-range="80-100" bambu-parent="Bambu ABS">
       <color name="Champagne Gold" hex="E5C88E" family="Gold/Bronze" />
       <color name="Silver" hex="A8ADB2" family="Gray/Silver" />
       <color name="Midnight Green" hex="2E7D32" family="Green" />
@@ -5117,9 +5117,9 @@
       <color name="Silver" hex="A8ADB2" family="Gray/Silver" />
       <color name="Yellow" hex="FBC02D" family="Yellow" />
     </product>
-    <product line="PA12-CF" material="PA12-CF" density="1.09" diameter="1.75" nozzle-range="280-300" bed-range="40-70 (PVP glue)" bambu-parent="Generic PA-CF" />
-    <product line="PAHT-CF" material="PAHT-CF" density="1.20" diameter="1.75" nozzle-range="300-320" bed-range="70-90 (PVP glue)" bambu-parent="Bambu PPA-CF" />
-    <product line="PAHT-GF" material="PAHT-GF" density="1.27" diameter="1.75" nozzle-range="300-320" bed-range="70-90 (glue)" bambu-parent="Generic PPA-GF">
+    <product line="PA12-CF" material="PA12-CF" density="1.09" diameter="1.75" nozzle-range="280-300" bed-range="40-70" bambu-parent="Generic PA-CF" />
+    <product line="PAHT-CF" material="PAHT-CF" density="1.20" diameter="1.75" nozzle-range="300-320" bed-range="70-90" bambu-parent="Bambu PPA-CF" />
+    <product line="PAHT-GF" material="PAHT-GF" density="1.27" diameter="1.75" nozzle-range="300-320" bed-range="70-90" bambu-parent="Generic PPA-GF">
       <color name="PAHT-GF Blue" hex="1976D2" family="Blue" />
     </product>
     <product line="PC/ABS-FR" material="PC/ABS" density="1.19" diameter="1.75" nozzle-range="240-270" bed-range="100-110" />
@@ -5127,7 +5127,7 @@
       <color name="Black" hex="1A1A1A" family="Black" />
     </product>
     <product line="PET-CF" material="PET-CF" density="1.34" diameter="1.75" nozzle-range="270-300" bed-range="70-80" bambu-parent="Bambu PET-CF" />
-    <product line="PET-GF" material="PET-GF" density="1.38" diameter="1.75" nozzle-range="280-320" bed-range="60-80 (PEI or PVP glue)" bambu-parent="Bambu PET-CF">
+    <product line="PET-GF" material="PET-GF" density="1.38" diameter="1.75" nozzle-range="280-320" bed-range="60-80" bambu-parent="Bambu PET-CF">
       <color name="Black" hex="1A1A1A" family="Black" />
       <color name="Brown" hex="6D4C41" family="Brown/Beige" />
     </product>
@@ -5198,7 +5198,7 @@
       <color name="Watermelon Red" hex="D12229" family="Red" />
       <color name="Milky green" hex="2E7D32" family="Green" />
     </product>
-    <product line="PLA Matte Rapido" material="PLA" density="1.24" diameter="1.75" nozzle-range="210-230" bed-range="45-60 (filament guide)" bambu-parent="Bambu PLA Matte">
+    <product line="PLA Matte Rapido" material="PLA" density="1.24" diameter="1.75" nozzle-range="210-230" bed-range="45-60" bambu-parent="Bambu PLA Matte">
       <color name="Black" hex="1A1A1A" family="Black" />
       <color name="White" hex="F5F5F5" family="White" />
       <color name="Tech Gray" hex="808487" family="Gray/Silver" />
@@ -5222,13 +5222,13 @@
       <color name="Pink" hex="EC407A" family="Pink" />
       <color name="Purple" hex="7B1FA2" family="Purple" />
     </product>
-    <product line="PLA Rapido Metal" material="PLA" density="1.24" diameter="1.75" nozzle-range="190-220" bed-range="60 (with glue)" bambu-parent="Bambu PLA Metal">
+    <product line="PLA Rapido Metal" material="PLA" density="1.24" diameter="1.75" nozzle-range="190-220" bed-range="60-60" bambu-parent="Bambu PLA Metal">
       <color name="Coffee Gold" hex="6F4E37" family="Brown/Beige" />
       <color name="Midnight Green" hex="2E7D32" family="Green" />
       <color name="Blue" hex="1976D2" family="Blue" />
       <color name="Silver" hex="A8ADB2" family="Gray/Silver" />
     </product>
-    <product line="PLA Silk" material="PLA" density="1.24" diameter="1.75" nozzle-range="210-230" bed-range="60 (with glue)" bambu-parent="Bambu PLA Silk">
+    <product line="PLA Silk" material="PLA" density="1.24" diameter="1.75" nozzle-range="210-230" bed-range="60-60" bambu-parent="Bambu PLA Silk">
       <color name="Silver" hex="A8ADB2" family="Gray/Silver" />
       <color name="Gold" hex="D4AF37" family="Gold/Bronze" />
       <color name="Blue" hex="1976D2" family="Blue" />
@@ -5237,7 +5237,7 @@
       <color name="Rose Red" hex="D12229" family="Red" />
       <color name="Bronze" hex="8C6239" family="Gold/Bronze" />
     </product>
-    <product line="PLA Wood" material="PLA" density="1.24" diameter="1.75" nozzle-range="190-220" bed-range="30-60 (with glue)" bambu-parent="Bambu PLA Wood">
+    <product line="PLA Wood" material="PLA" density="1.24" diameter="1.75" nozzle-range="190-220" bed-range="30-60" bambu-parent="Bambu PLA Wood">
       <color name="Yellow" hex="FBC02D" family="Yellow" />
       <color name="Cedar Brown" hex="6D4C41" family="Brown/Beige" />
     </product>
@@ -5247,11 +5247,11 @@
       <color name="Lavender Purple" hex="967BB6" family="Purple" />
       <color name="Midnight Blue" hex="1976D2" family="Blue" />
     </product>
-    <product line="PPS-CF" material="PPS-CF" density="1.3" diameter="1.75" nozzle-range="310-350" bed-range="100" bambu-parent="Bambu PPS-CF" />
+    <product line="PPS-CF" material="PPS-CF" density="1.3" diameter="1.75" nozzle-range="310-350" bed-range="100-100" bambu-parent="Bambu PPS-CF" />
     <product line="PPS-GF20" material="PPS-GF" density="1.36" diameter="1.75" nozzle-range="310-350" bed-range="80-90" bambu-parent="Generic PPS">
       <color name="Gray" hex="808487" family="Gray/Silver" />
     </product>
-    <product line="S-White" material="Support" density="1.16" diameter="1.75" nozzle-range="260-280" bed-range="60-80 (PVP glue)" bambu-parent="Bambu Support For PA PET">
+    <product line="S-White" material="Support" density="1.16" diameter="1.75" nozzle-range="260-280" bed-range="60-80" bambu-parent="Bambu Support For PA PET">
       <color name="White" hex="F5F5F5" family="White" />
     </product>
     <product line="TPU-Aero" material="TPU" density="1.15" diameter="1.75" nozzle-range="230-270" bed-range="30-45" bambu-parent="Generic TPU">
@@ -5266,8 +5266,8 @@
       <color name="White" hex="F5F5F5" family="White" />
       <color name="Transparent" hex="E0E8EA" family="Transparent/Natural" />
     </product>
-    <product line="UltraPA" material="PA" density="1.21" diameter="1.75" nozzle-range="260-280" bed-range="70-80 (PEI or PVP glue)" bambu-parent="Generic PA" />
-    <product line="UltraPA-CF25" material="PPA-CF" density="1.23" diameter="1.75" nozzle-range="300-340" bed-range="70-80 (PEI or PVP glue)" bambu-parent="Bambu PPA-CF">
+    <product line="UltraPA" material="PA" density="1.21" diameter="1.75" nozzle-range="260-280" bed-range="70-80" bambu-parent="Generic PA" />
+    <product line="UltraPA-CF25" material="PPA-CF" density="1.23" diameter="1.75" nozzle-range="300-340" bed-range="70-80" bambu-parent="Bambu PPA-CF">
       <color name="Black" hex="1A1A1A" family="Black" />
     </product>
   </vendor>
@@ -5294,13 +5294,13 @@
     <product line="Fibreheart PET-CF" material="PET-CF" density="1.24" diameter="1.75" nozzle-range="280-320" bed-range="60-80" bambu-parent="Bambu PET-CF">
       <color name="Black" hex="1A1A1A" family="Black" />
     </product>
-    <product line="Fibreheart PET-GF" material="PET-GF" density="1.3" diameter="1.75" nozzle-range="300-300" bed-range="80" bambu-parent="Bambu PET-CF">
+    <product line="Fibreheart PET-GF" material="PET-GF" density="1.3" diameter="1.75" nozzle-range="300-300" bed-range="80-80" bambu-parent="Bambu PET-CF">
       <color name="Flat Dark Earth" hex="808487" family="Gray/Silver" />
       <color name="Olive Green" hex="556B2F" family="Green" />
       <color name="White" hex="F5F5F5" family="White" />
       <color name="Black" hex="1A1A1A" family="Black" />
     </product>
-    <product line="Fibreheart PETG-CF HF" material="PETG-CF" density="1.25" diameter="1.75" nozzle-range="230-250" bed-range="80" bambu-parent="Bambu PETG-CF">
+    <product line="Fibreheart PETG-CF HF" material="PETG-CF" density="1.25" diameter="1.75" nozzle-range="230-250" bed-range="80-80" bambu-parent="Bambu PETG-CF">
       <color name="High Flow Black" hex="1A1A1A" family="Black" />
     </product>
     <product line="Fibreheart PETG-CF Pro" material="PETG-CF" density="1.3" diameter="1.75" nozzle-range="250-270" bed-range="70-80" bambu-parent="Bambu PETG-CF">
@@ -5312,7 +5312,7 @@
     <product line="Fibreheart PPA-CF" material="PPA-CF" density="1.24" diameter="1.75" nozzle-range="300-320" bed-range="70-90" bambu-parent="Generic PPA-CF">
       <color name="Black" hex="1A1A1A" family="Black" />
     </product>
-    <product line="Fibreheart PPA-CF Core" material="PPA-CF" density="1.23" diameter="1.75" nozzle-range="280-320" bed-range="80" bambu-parent="Bambu PPA-CF">
+    <product line="Fibreheart PPA-CF Core" material="PPA-CF" density="1.23" diameter="1.75" nozzle-range="280-320" bed-range="80-80" bambu-parent="Bambu PPA-CF">
       <color name="Black" hex="1A1A1A" family="Black" />
     </product>
     <product line="Fibreheart PPA-GF" material="PPA-GF" density="1.27" diameter="1.75" nozzle-range="300-320" bed-range="80-110" bambu-parent="Generic PPA-GF">
@@ -5322,7 +5322,7 @@
     <product line="Fibreheart TPU-GF" material="TPU-GF" density="1.32" diameter="1.75" nozzle-range="240-270" bed-range="40-60" bambu-parent="Generic TPU for AMS">
       <color name="Black" hex="1A1A1A" family="Black" />
     </product>
-    <product line="Flex TPU 64D" material="TPU" density="1.23" diameter="1.75" nozzle-range="240-270" bed-range="45" bambu-parent="Generic TPU">
+    <product line="Flex TPU 64D" material="TPU" density="1.23" diameter="1.75" nozzle-range="240-270" bed-range="45-45" bambu-parent="Generic TPU">
       <color name="Black" hex="1A1A1A" family="Black" />
       <color name="White" hex="F5F5F5" family="White" />
     </product>
@@ -5403,9 +5403,9 @@
     </product>
   </vendor>
   <vendor name="Spectrum" slug="spectrum" tare-grams="200" priority="3" flange-trait="standard-spool">
-    <product line="ABS GP450" material="ABS" density="1.04" diameter="1.75" nozzle-range="235-255" bed-range="100" bambu-parent="Bambu ABS" />
-    <product line="ABS Kevlar" material="ABS" density="1.05" diameter="1.75" nozzle-range="250-270" bed-range="100" bambu-parent="Bambu ABS" />
-    <product line="ABS Medical" material="ABS" density="1.06" diameter="1.75" nozzle-range="235-255" bed-range="100" bambu-parent="Bambu ABS" />
+    <product line="ABS GP450" material="ABS" density="1.04" diameter="1.75" nozzle-range="235-255" bed-range="100-100" bambu-parent="Bambu ABS" />
+    <product line="ABS Kevlar" material="ABS" density="1.05" diameter="1.75" nozzle-range="250-270" bed-range="100-100" bambu-parent="Bambu ABS" />
+    <product line="ABS Medical" material="ABS" density="1.06" diameter="1.75" nozzle-range="235-255" bed-range="100-100" bambu-parent="Bambu ABS" />
     <product line="ASA 275" material="ASA" density="1.07" diameter="1.75" nozzle-range="200-240" bed-range="40-60" bambu-parent="Bambu ASA" />
     <product line="ASA Electrically Conductive" material="ASA" density="1.17" diameter="1.75" nozzle-range="240-270" bed-range="75-100" bambu-parent="Bambu ASA" />
     <product line="ASA Kevlar" material="ASA" density="1.07" diameter="1.75" nozzle-range="240-270" bed-range="80-100" bambu-parent="Bambu ASA" />
@@ -5441,7 +5441,7 @@
     <product line="PET CF15" material="PET-CF" density="1.40" diameter="1.75" nozzle-range="245-270" bed-range="50-70" bambu-parent="Bambu PET-CF" />
     <product line="PET-G Carbon" material="PETG-CF" density="1.32" diameter="1.75" nozzle-range="230-255" bed-range="60-80" bambu-parent="Bambu PETG-CF" />
     <product line="PET-G FR V0" material="PETG" density="1.26" diameter="1.75" nozzle-range="230-255" bed-range="60-80" bambu-parent="Bambu PETG Basic" />
-    <product line="PET-G FX120" material="PETG" density="1.13" diameter="1.75" nozzle-range="240-260" bed-range="80" bambu-parent="Generic PETG" />
+    <product line="PET-G FX120" material="PETG" density="1.13" diameter="1.75" nozzle-range="240-260" bed-range="80-80" bambu-parent="Generic PETG" />
     <product line="PET-G Glitter" material="PETG" density="1.27" diameter="1.75" nozzle-range="230-255" bed-range="60-80" bambu-parent="Bambu PETG Basic" />
     <product line="PET-G Glow in the Dark" material="PETG" density="1.27" diameter="1.75" nozzle-range="230-255" bed-range="60-80" bambu-parent="Bambu PETG Basic" />
     <product line="PET-G HT100" material="PETG" density="1.18" diameter="1.75" nozzle-range="250-280" bed-range="100-110" bambu-parent="Bambu PETG Basic" />
@@ -5483,13 +5483,13 @@
     <product line="S-Flex 98A" material="TPU" density="1.09" diameter="1.75" nozzle-range="200-230" bed-range="50-70" bambu-parent="Bambu TPU 95A" />
     <product line="S-Flex Carbon" material="TPU" density="1.23" diameter="1.75" nozzle-range="210-245" bed-range="45-70" bambu-parent="Bambu TPU 90A" />
     <product line="Safeguard PLA" material="PLA" density="1.24" diameter="1.75" nozzle-range="185-215" bed-range="0-45" bambu-parent="Bambu PLA Basic" />
-    <product line="smart ABS" material="ABS" density="1.05" diameter="1.75" nozzle-range="230-255" bed-range="100" bambu-parent="Bambu ABS" />
+    <product line="smart ABS" material="ABS" density="1.05" diameter="1.75" nozzle-range="230-255" bed-range="100-100" bambu-parent="Bambu ABS" />
     <product line="The Filament ASA" material="ASA" density="1.07" diameter="1.75" nozzle-range="230-265" bed-range="75-100" bambu-parent="Bambu ASA" />
     <product line="The Filament ASA CF" material="ASA-CF" density="1.12" diameter="1.75" nozzle-range="230-270" bed-range="75-100" bambu-parent="Bambu ASA-CF" />
     <product line="THE FILAMENT HT-PLA" material="PLA" density="1.2" diameter="1.75" nozzle-range="195-220" bed-range="40-50" bambu-parent="Bambu PLA Basic" />
     <product line="The Filament PETG" material="PETG" density="1.27" diameter="1.75" nozzle-range="230-255" bed-range="60-75" bambu-parent="Bambu PETG Basic" />
     <product line="The Filament PETG CF" material="PETG-CF" density="1.29" diameter="1.75" nozzle-range="240-265" bed-range="60-70" bambu-parent="Bambu PETG-CF" />
-    <product line="The Filament PETG Lite" material="PETG" density="1.29" diameter="1.75" nozzle-range="235-255" bed-range="60" bambu-parent="Bambu PETG Basic" />
+    <product line="The Filament PETG Lite" material="PETG" density="1.29" diameter="1.75" nozzle-range="235-255" bed-range="60-60" bambu-parent="Bambu PETG Basic" />
     <product line="The Filament PLA" material="PLA" density="1.24" diameter="1.75" nozzle-range="185-215" bed-range="40-50" bambu-parent="Bambu PLA Basic" />
     <product line="The Filament PLA CF" material="PLA-CF" density="1.25" diameter="1.75" nozzle-range="200-230" bed-range="35-45" bambu-parent="Bambu PLA-CF" />
     <product line="The Filament PLA HS" material="PLA" density="1.24" diameter="1.75" nozzle-range="225-250" bed-range="40-55" bambu-parent="Bambu PLA Basic" />
@@ -5541,7 +5541,7 @@
       <color name="Lavender Purple" hex="967BB6" family="Purple" />
       <color name="Mocha Mousse" hex="808487" family="Gray/Silver" />
     </product>
-    <product line="Easy PA" material="PA" density="1.10" diameter="1.75" nozzle-range="250-280" bed-range="30-50 (glue)" bambu-parent="Generic PA">
+    <product line="Easy PA" material="PA" density="1.10" diameter="1.75" nozzle-range="250-280" bed-range="30-50" bambu-parent="Generic PA">
       <color name="Easy PA Black" hex="1A1A1A" family="Black" />
     </product>
     <product line="Elite PETG" material="PETG" density="1.24" diameter="1.75" nozzle-range="220-250" bed-range="65-75" bambu-parent="Generic PETG">
@@ -5617,10 +5617,10 @@
     <product line="PA12-CF" material="PA12-CF" density="1.08" diameter="1.75" nozzle-range="260-280" bed-range="60-70" bambu-parent="Generic PA-CF">
       <color name="PA12-CF Black" hex="1A1A1A" family="Black" />
     </product>
-    <product line="PA6-CF" material="PA6-CF" density="1.12" diameter="1.75" nozzle-range="270-290" bed-range="50-70 (glue)" bambu-parent="Bambu PA6-CF">
+    <product line="PA6-CF" material="PA6-CF" density="1.12" diameter="1.75" nozzle-range="270-290" bed-range="50-70" bambu-parent="Bambu PA6-CF">
       <color name="Black" hex="1A1A1A" family="Black" />
     </product>
-    <product line="PA6-GF" material="PA6-GF" density="1.24" diameter="1.75" nozzle-range="270-290" bed-range="60-70 (glue)" bambu-parent="Bambu PA6-GF">
+    <product line="PA6-GF" material="PA6-GF" density="1.24" diameter="1.75" nozzle-range="270-290" bed-range="60-70" bambu-parent="Bambu PA6-GF">
       <color name="Black" hex="1A1A1A" family="Black" />
     </product>
     <product line="PC" material="PC" density="1.15" diameter="1.75" nozzle-range="260-280" bed-range="100-110" bambu-parent="Bambu PC">
@@ -5822,10 +5822,10 @@
     <product line="PP" material="PP" density="1.24" diameter="1.75" nozzle-range="210-230" bed-range="50-60" bambu-parent="Generic PP">
       <color name="Natural" hex="E3E0D3" family="Transparent/Natural" />
     </product>
-    <product line="PP 2.0" material="PP" density="1.01" diameter="1.75" nozzle-range="240-260" bed-range="40" bambu-parent="Generic PP">
+    <product line="PP 2.0" material="PP" density="1.01" diameter="1.75" nozzle-range="240-260" bed-range="40-40" bambu-parent="Generic PP">
       <color name="Natural" hex="E3E0D3" family="Transparent/Natural" />
     </product>
-    <product line="PVA" material="PVA" density="1.01" diameter="1.75" nozzle-range="210-230" bed-range="&lt;70" bambu-parent="Bambu PVA">
+    <product line="PVA" material="PVA" density="1.01" diameter="1.75" nozzle-range="210-230" bed-range="25-70" bambu-parent="Bambu PVA">
       <color name="Transparent Yellow" hex="E0E8EA" family="Transparent/Natural" />
     </product>
     <product line="PVB" material="PVB" density="1.08" diameter="1.75" nozzle-range="210-230" bed-range="50-60">
@@ -5879,7 +5879,7 @@
     </product>
   </vendor>
   <vendor name="TEQStone" slug="teqstone" tare-grams="200" priority="3" flange-trait="standard-spool">
-    <product line="PETG" material="PETG" density="1.24" diameter="1.75" nozzle-range="220-250" bed-range="90 (single published value)" bambu-parent="Generic PETG">
+    <product line="PETG" material="PETG" density="1.24" diameter="1.75" nozzle-range="220-250" bed-range="90-90" bambu-parent="Generic PETG">
       <color name="PETG Green" hex="2E7D32" family="Green" />
     </product>
     <product line="TPU" material="TPU" density="1.24" diameter="1.75" nozzle-range="190-230" bed-range="45-60" bambu-parent="Generic TPU">

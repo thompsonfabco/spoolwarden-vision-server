@@ -1,7 +1,7 @@
 """Self-contained dark-mode Web UI served at GET / and GET /ui by filament-vision-server."""
 from __future__ import annotations
 
-STANDALONE_WEB_UI_HTML = """<!DOCTYPE html>
+STANDALONE_WEB_UI_HTML = r"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -555,8 +555,14 @@ dz.addEventListener("drop", (e) => {
   dz.classList.remove("dragover");
   handleFiles(e.dataTransfer.files);
 });
-document.getElementById("fileInput").addEventListener("change", (e) => handleFiles(e.target.files));
-document.getElementById("cameraInput").addEventListener("change", (e) => handleFiles(e.target.files));
+document.getElementById("fileInput").addEventListener("change", (e) => {
+  handleFiles(e.target.files);
+  e.target.value = "";
+});
+document.getElementById("cameraInput").addEventListener("change", (e) => {
+  handleFiles(e.target.files);
+  e.target.value = "";
+});
 
 const tokEl = document.getElementById("authToken");
 try { localStorage.removeItem("fvs_auth_token"); } catch (_) {}
@@ -634,7 +640,9 @@ function readFormObject() {
     material: document.getElementById("fMaterial").value.trim() || "PLA",
     line,
     color_name: colorName,
-    name: (colorName && colorName.toLowerCase() !== "unknown") ? `${line} ${colorName}`.trim() : line,
+    name: (colorName && colorName.toLowerCase() !== "unknown")
+      ? (colorName.toLowerCase().startsWith(line.toLowerCase()) ? colorName : `${line} ${colorName}`.trim())
+      : line,
     color_family: document.getElementById("fColorFamily").value.trim() || "Black",
     color_hex: colorHex || "1A1A1A",
     net: parseInt(document.getElementById("fNet").value || "1000", 10),
@@ -687,7 +695,7 @@ async function runRecognize() {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({
-        api_version: "1.0",
+        api_version: "1.1",
         tier: document.getElementById("tierSelect").value,
         hint: document.getElementById("hintInput").value.trim(),
         images_b64: state.photosB64,
@@ -726,7 +734,7 @@ async function runRevise() {
     const res = await fetch("/v1/revise", {
       method: "POST",
       headers: authHeaders(),
-      body: JSON.stringify({ api_version: "1.0", previous: prev, note }),
+      body: JSON.stringify({ api_version: "1.1", previous: prev, note }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.message || data.error?.message || `HTTP ${res.status}`);
@@ -747,13 +755,14 @@ async function toggleOptIn(enabled) {
     const res = await fetch("/v1/config", {
       method: "POST",
       headers: authHeaders(),
-      body: JSON.stringify({ api_version: "1.0", feedback_opt_in: !!enabled }),
+      body: JSON.stringify({ api_version: "1.1", feedback_opt_in: !!enabled }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
     setStatus(`Training feedback opt-in ${data.feedback_opt_in ? "enabled" : "disabled"}.`);
     refreshHealthAndFeedback();
   } catch (err) {
+    document.getElementById("optInToggle").checked = !enabled;
     setStatus("Config update failed: " + err.message, true);
   }
 }
@@ -775,7 +784,7 @@ async function queueFeedback() {
       method: "POST",
       headers: authHeaders(),
       body: JSON.stringify({
-        api_version: "1.0",
+        api_version: "1.1",
         images_b64: state.photosB64,
         predicted,
         corrected,
@@ -797,7 +806,7 @@ async function submitFeedback() {
     const res = await fetch("/v1/feedback/submit", {
       method: "POST",
       headers: authHeaders(),
-      body: JSON.stringify({ api_version: "1.0" }),
+      body: JSON.stringify({ api_version: "1.1" }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.message || data.error?.message || `HTTP ${res.status}`);
@@ -848,7 +857,7 @@ function renderSessionTable() {
       <td>${escapeHtml(it.material)}</td>
       <td>${escapeHtml(it.line)}</td>
       <td><span class="swatch-chip" style="background:${escapeHtml(hex)}"></span>${escapeHtml(it.color_name)} (${escapeHtml(it.color_family)})</td>
-      <td>${it.net}g / ${it.tare}g</td>
+      <td>${escapeHtml(it.net)}g / ${escapeHtml(it.tare)}g</td>
       <td>${it.sealed ? "Sealed" : "Open"}</td>
       <td>${it.confidence != null ? Math.round(it.confidence * 100) + "%" : "--"}</td>
       <td><button type="button" onclick="removeFromSession(${idx})">Remove</button></td>
@@ -886,7 +895,10 @@ function exportJSON() {
 }
 
 function csvCell(v) {
-  const s = String(v ?? "");
+  let s = String(v ?? "");
+  if (/^[=+\-@\t\r]/.test(s)) {
+    s = "'" + s;
+  }
   return '"' + s.replace(/"/g, '""') + '"';
 }
 
@@ -930,14 +942,18 @@ function exportSpoolman() {
     const vName = it.vendor || "Unknown";
     if (!vendorsMap[vName]) vendorsMap[vName] = { name: vName };
     let nozzleTemp = null;
-    if (it.nozzle_range && String(it.nozzle_range).includes("-")) {
-      const [a, b] = String(it.nozzle_range).split("-").map(Number);
-      if (Number.isFinite(a) && Number.isFinite(b)) nozzleTemp = Math.round((a + b) / 2);
+    const nm = it.nozzle_range ? String(it.nozzle_range).match(/(\d+)\s*[-~–]+\s*(\d+)/) : null;
+    if (nm) {
+      nozzleTemp = Math.round((Number(nm[1]) + Number(nm[2])) / 2);
+    } else if (it.nozzle != null && Number.isFinite(Number(it.nozzle))) {
+      nozzleTemp = Number(it.nozzle);
     }
     let bedTemp = null;
-    if (it.bed_range && String(it.bed_range).includes("-")) {
-      const [a, b] = String(it.bed_range).split("-").map(Number);
-      if (Number.isFinite(a) && Number.isFinite(b)) bedTemp = Math.round((a + b) / 2);
+    const bm = it.bed_range ? String(it.bed_range).match(/(\d+)\s*[-~–]+\s*(\d+)/) : null;
+    if (bm) {
+      bedTemp = Math.round((Number(bm[1]) + Number(bm[2])) / 2);
+    } else if (it.bed != null && Number.isFinite(Number(it.bed))) {
+      bedTemp = Number(it.bed);
     }
     const filament = {
       id: idx + 1,

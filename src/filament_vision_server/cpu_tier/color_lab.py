@@ -5,6 +5,8 @@ import math
 import cv2
 import numpy as np
 
+from ..xml_io import CONFIGS_DIR, parse_xml_file
+
 # 14 canonical color families and their reference RGB centroids
 FAMILY_CENTROID_RGB: list[tuple[str, tuple[int, int, int], str]] = [
     ("Black", (26, 26, 26), "1A1A1A"),
@@ -20,7 +22,27 @@ FAMILY_CENTROID_RGB: list[tuple[str, tuple[int, int, int], str]] = [
     ("Brown/Beige", (140, 105, 85), "8D6E63"),
     ("Gold/Bronze", (205, 165, 55), "D4AF37"),
     ("Transparent/Natural", (224, 232, 234), "E0E8EA"),
+    ("Multi-color/Rainbow", (156, 39, 176), "9C27B0"),
 ]
+
+
+def _load_color_extractor_config() -> tuple[float, float, int]:
+    """Read specular/shadow L* bounds and k-clusters from configs/cpu_pipeline.xml."""
+    spec_l_max = 94.0
+    shad_l_min = 8.0
+    k_clusters = 3
+    cfg_path = CONFIGS_DIR / "cpu_pipeline.xml"
+    if cfg_path.is_file():
+        try:
+            root = parse_xml_file(cfg_path)
+            ce = root.find("color-extractor")
+            if ce is not None:
+                spec_l_max = float(ce.attrib.get("specular-l-max", str(spec_l_max)))
+                shad_l_min = float(ce.attrib.get("shadow-l-min", str(shad_l_min)))
+                k_clusters = max(2, int(ce.attrib.get("k-clusters", str(k_clusters))))
+        except Exception:
+            pass
+    return spec_l_max, shad_l_min, k_clusters
 
 
 def gray_world_white_balance(img_bgr: np.ndarray) -> np.ndarray:
@@ -90,10 +112,11 @@ def extract_filament_color(
     img_bgr: np.ndarray,
     is_spool_crop: bool = True,
 ) -> tuple[str, str, str]:
-    """Extract (hex_6char, color_family, visual_finish_hint) from an image or spool crop."""
+    """Extract (hex_6char, color_family, visual_finish_hint) in CIE LAB space from an image or spool crop."""
     if img_bgr is None or img_bgr.size == 0:
         return "1A1A1A", "Black", "Basic"
 
+    spec_l_max, shad_l_min, k_clusters = _load_color_extractor_config()
     small = cv2.resize(img_bgr, (160, 160), interpolation=cv2.INTER_AREA)
     wb = gray_world_white_balance(small)
 
@@ -107,15 +130,17 @@ def extract_filament_color(
     else:
         geom_mask = np.ones((h, w), dtype=bool)
 
+    lab = cv2.cvtColor(wb, cv2.COLOR_BGR2LAB)
+    l_pct = lab[:, :, 0].astype(np.float32) * (100.0 / 255.0)
     hsv = cv2.cvtColor(wb, cv2.COLOR_BGR2HSV)
     val = hsv[:, :, 2]
     sat = hsv[:, :, 1]
 
-    # Filter out specular glare (val > 246 & sat < 30) and deep background shadows (val < 18)
-    valid_mask = geom_mask & (val >= 18) & ~((val >= 246) & (sat < 30))
-    pixels_bgr = wb[valid_mask]
-    if len(pixels_bgr) < 50:
-        pixels_bgr = wb.reshape(-1, 3)
+    # Filter out specular glare and deep shadow pixels using CIE L* bounds
+    valid_mask = geom_mask & (l_pct >= shad_l_min) & ~((l_pct >= spec_l_max) & (sat < 35))
+    pixels_lab = lab[valid_mask]
+    if len(pixels_lab) < 50:
+        pixels_lab = lab.reshape(-1, 3)
 
     # Estimate surface finish from luminance variance / specular tail
     v_valid = val[geom_mask]
@@ -123,26 +148,53 @@ def extract_filament_color(
     p50 = float(np.percentile(v_valid, 50)) if len(v_valid) > 10 else 100.0
     finish_hint = "Silk" if (p95 - p50 > 72.0 and p95 > 215.0) else ("Matte" if (p95 - p50 < 28.0) else "Basic")
 
-    # K-means clustering (k=2) in BGR to separate dominant filament color from black/cardboard flange
-    pts = pixels_bgr.astype(np.float32)
+    # K-means clustering in CIE LAB space (default k=3 per cpu_pipeline.xml)
+    pts = pixels_lab.astype(np.float32)
+    is_multicolor = False
     if len(pts) >= 20:
+        eff_k = max(2, min(k_clusters, len(pts)))
         criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 15, 1.0)
-        _, labels, centers = cv2.kmeans(pts, 2, None, criteria, 3, cv2.KMEANS_PP_CENTERS)
-        counts = np.bincount(labels.flatten(), minlength=2)
-        c0, c1 = centers[0], centers[1]
-        # Prefer the more chromatic cluster if counts are reasonably balanced, else largest cluster
-        sat0 = float(np.max(c0) - np.min(c0))
-        sat1 = float(np.max(c1) - np.min(c1))
-        if sat1 > sat0 + 35.0 and counts[1] >= 0.28 * len(pts):
-            dom = c1
-        elif sat0 > sat1 + 35.0 and counts[0] >= 0.28 * len(pts):
-            dom = c0
-        else:
-            dom = centers[int(np.argmax(counts))]
+        _, labels, centers_lab = cv2.kmeans(pts, eff_k, None, criteria, 3, cv2.KMEANS_PP_CENTERS)
+        counts = np.bincount(labels.flatten(), minlength=eff_k)
+        centers_u8 = np.clip(centers_lab, 0, 255).astype(np.uint8).reshape(1, eff_k, 3)
+        centers_bgr = cv2.cvtColor(centers_u8, cv2.COLOR_LAB2BGR)[0].astype(np.float32)
+        centers_hsv = cv2.cvtColor(centers_bgr.astype(np.uint8).reshape(1, eff_k, 3), cv2.COLOR_BGR2HSV)[0]
+
+        # Detect balanced vivid multi-color / rainbow windings across distinct hues
+        chromatic_hues: list[float] = []
+        for idx_c in range(eff_k):
+            share = counts[idx_c] / float(len(pts))
+            rgb_spread = float(np.max(centers_bgr[idx_c]) - np.min(centers_bgr[idx_c]))
+            if share >= 0.22 and rgb_spread >= 45.0 and int(centers_hsv[idx_c, 1]) >= 65:
+                chromatic_hues.append(float(centers_hsv[idx_c, 0]) * 2.0)
+        for i in range(len(chromatic_hues)):
+            for j in range(i + 1, len(chromatic_hues)):
+                diff = abs(chromatic_hues[i] - chromatic_hues[j])
+                hue_gap = min(diff, 360.0 - diff)
+                if hue_gap >= 35.0:
+                    is_multicolor = True
+                    break
+            if is_multicolor:
+                break
+
+        dom_idx = int(np.argmax(counts))
+        dom = centers_bgr[dom_idx]
+        dom_spread = float(np.max(dom) - np.min(dom))
+        best_chrom_idx = dom_idx
+        best_chrom_spread = dom_spread
+        for idx_c in range(eff_k):
+            if counts[idx_c] >= 0.22 * len(pts):
+                spread = float(np.max(centers_bgr[idx_c]) - np.min(centers_bgr[idx_c]))
+                if spread > best_chrom_spread:
+                    best_chrom_spread = spread
+                    best_chrom_idx = idx_c
+        if best_chrom_spread > dom_spread + 35.0:
+            dom = centers_bgr[best_chrom_idx]
     else:
-        dom = np.median(pts, axis=0)
+        dom_lab = np.clip(np.median(pts, axis=0), 0, 255).astype(np.uint8).reshape(1, 1, 3)
+        dom = cv2.cvtColor(dom_lab, cv2.COLOR_LAB2BGR)[0, 0].astype(np.float32)
 
     b, g, r = int(np.clip(dom[0], 0, 255)), int(np.clip(dom[1], 0, 255)), int(np.clip(dom[2], 0, 255))
     hex_code = f"{r:02X}{g:02X}{b:02X}"
-    family = classify_rgb_to_family(r, g, b)
+    family = "Multi-color/Rainbow" if is_multicolor else classify_rgb_to_family(r, g, b)
     return hex_code, family, finish_hint

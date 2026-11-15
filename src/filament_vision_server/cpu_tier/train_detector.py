@@ -8,7 +8,7 @@ from typing import Any
 
 from PIL import Image
 
-from ..xml_io import DATA_DIR, PROJECT_ROOT, AnnotatedSample, load_dataset_xml, load_training_samples_with_feedback
+from ..xml_io import CONFIGS_DIR, DATA_DIR, PROJECT_ROOT, AnnotatedSample, load_dataset_xml, load_training_samples_with_feedback, parse_xml_file
 
 DETECTOR_CLASSES = ["box_label", "spool_label", "spool_windings", "spool_flange"]
 CLASS_TO_ID = {name: idx for idx, name in enumerate(DETECTOR_CLASSES)}
@@ -84,11 +84,27 @@ def train_and_export_detector(
     train_xml: str | Path = DATA_DIR / "annotations" / "train_split.xml",
     val_xml: str | Path = DATA_DIR / "annotations" / "val_split.xml",
     output_onnx: str | Path = PROJECT_ROOT / "models" / "cpu" / "detector_rfdetr_n.onnx",
-    epochs: int = 8,
-    batch: int = 8,
+    epochs: int | None = None,
+    batch: int | None = None,
 ) -> dict[str, Any]:
     """Train RF-DETR-N (Apache-2.0) on CUDA/CPU and export to ONNX for CPU inference."""
     from rfdetr import RFDETRNano
+
+    cfg_epochs, cfg_batch, cfg_lr = 8, 8, 1e-4
+    cfg_path = CONFIGS_DIR / "cpu_pipeline.xml"
+    if cfg_path.is_file():
+        try:
+            cfg_root = parse_xml_file(cfg_path)
+            tr_el = cfg_root.find("./detector/training")
+            if tr_el is not None:
+                cfg_epochs = int(tr_el.attrib.get("epochs", str(cfg_epochs)))
+                cfg_batch = int(tr_el.attrib.get("batch-size", str(cfg_batch)))
+                cfg_lr = float(tr_el.attrib.get("lr0", str(cfg_lr)))
+        except Exception:
+            pass
+
+    eff_epochs = cfg_epochs if epochs is None else int(epochs)
+    eff_batch = cfg_batch if batch is None else int(batch)
 
     coco_root = DATA_DIR / "rfdetr_build"
     train_samples = load_training_samples_with_feedback(train_xml)
@@ -97,20 +113,20 @@ def train_and_export_detector(
     n_tr = _prepare_coco_split(train_samples, coco_root / "train")
     n_va = _prepare_coco_split(val_samples, coco_root / "valid")
 
-    runs_dir = PROJECT_ROOT / "models" / "cpu" / "rfdetr_runs"
+    runs_dir = DATA_DIR / "training_runs" / "rfdetr_runs"
     runs_dir.mkdir(parents=True, exist_ok=True)
 
     model = RFDETRNano()
     model.train(
         dataset_dir=str(coco_root),
         output_dir=str(runs_dir),
-        epochs=epochs,
-        batch_size=batch,
+        epochs=eff_epochs,
+        batch_size=eff_batch,
         grad_accum_steps=2,
-        lr=1e-4,
+        lr=cfg_lr,
         num_workers=0,
         run_test=False,
-        checkpoint_interval=epochs,
+        checkpoint_interval=eff_epochs,
     )
 
     # Load best checkpoint if saved, then export to ONNX

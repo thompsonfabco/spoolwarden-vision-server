@@ -65,10 +65,25 @@ def _eval_samples(
         if pred.sealed == gt.sealed:
             sealed_exact += 1
 
-    n = max(1, len(latencies))
+    if not latencies:
+        return {
+            "tier": tier_name,
+            "samples": 0,
+            "vendor_exact_acc": 0.0,
+            "vendor_fuzzy_acc": 0.0,
+            "material_acc": 0.0,
+            "line_acc": 0.0,
+            "color_family_acc": 0.0,
+            "color_name_acc": 0.0,
+            "sealed_acc": 0.0,
+            "mean_latency_ms": 0.0,
+            "p95_latency_ms": 0.0,
+        }
+
+    n = len(latencies)
     return {
         "tier": tier_name,
-        "samples": len(latencies),
+        "samples": n,
         "vendor_exact_acc": round(vendor_exact / n, 4),
         "vendor_fuzzy_acc": round(vendor_fuzzy / n, 4),
         "material_acc": round(material_exact / n, 4),

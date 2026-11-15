@@ -6,7 +6,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from ..xml_io import DATA_DIR, PROJECT_ROOT, load_dataset_xml
+from ..xml_io import DATA_DIR, PROJECT_ROOT, load_dataset_xml, parse_xml_file, write_xml_atomic
 from .feedback import ingest_feedback_bundles
 
 DEFAULT_INCOMING_DIR = DATA_DIR / "feedback_incoming"
@@ -29,7 +29,7 @@ def _collect_feedback_zips(source_dirs: list[Path]) -> list[Path]:
                 if rp not in seen:
                     seen.add(rp)
                     zips.append(zp)
-            if d == DEFAULT_INCOMING_DIR:
+            if d.resolve() == DEFAULT_INCOMING_DIR.resolve():
                 for zp in sorted(d.glob("*.zip")):
                     rp = zp.resolve()
                     if rp not in seen:
@@ -58,7 +58,16 @@ def run_one_click_update(
         dirs = [Path(p) for p in source_dirs]
 
     fb_xml_path = Path(feedback_xml)
-    before_count = len(load_dataset_xml(fb_xml_path)) if fb_xml_path.is_file() else 0
+    before_count = 0
+    last_trained_count = 0
+    if fb_xml_path.is_file():
+        pre_root = parse_xml_file(fb_xml_path)
+        before_count = len(pre_root.findall("sample"))
+        raw_lts = pre_root.attrib.get("last-trained-samples")
+        if raw_lts is not None and str(raw_lts).strip().lstrip("-").isdigit():
+            last_trained_count = max(0, int(str(raw_lts).strip()))
+        else:
+            last_trained_count = 0
 
     zips = _collect_feedback_zips(dirs)
     ingested_entries = 0
@@ -88,8 +97,15 @@ def run_one_click_update(
             shutil.move(str(zp), str(dest))
             archived_files.append(dest.name)
 
-    after_count = len(load_dataset_xml(fb_xml_path)) if fb_xml_path.is_file() else 0
-    new_samples = after_count - before_count
+    after_count = before_count
+    if fb_xml_path.is_file():
+        post_root = parse_xml_file(fb_xml_path)
+        after_count = len(post_root.findall("sample"))
+        if zips or "last-trained-samples" not in post_root.attrib:
+            post_root.attrib["last-trained-samples"] = str(last_trained_count)
+            write_xml_atomic(fb_xml_path, post_root)
+
+    new_samples = max(0, after_count - last_trained_count)
 
     summary: dict[str, Any] = {
         "zips_found": len(zips),
@@ -125,6 +141,10 @@ def run_one_click_update(
             train_results["gpu_vlm"] = train_gpu_vlm_lora()
         summary["train_results"] = train_results
         summary["trained"] = True
+        if fb_xml_path.is_file():
+            trained_root = parse_xml_file(fb_xml_path)
+            trained_root.attrib["last-trained-samples"] = str(after_count)
+            write_xml_atomic(fb_xml_path, trained_root)
 
     if not skip_benchmark:
         from ..evaluation.benchmark import run_benchmark

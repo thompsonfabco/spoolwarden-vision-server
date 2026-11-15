@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import re
 import sys
+import tempfile
 import xml.etree.ElementTree as StdET
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -27,9 +28,13 @@ def _detect_project_root() -> Path:
     cwd = Path.cwd().resolve()
     if (cwd / "configs").is_dir() and (cwd / "data").is_dir():
         return cwd
-    prefix_guess = Path(sys.executable).resolve().parent.parent.parent
-    if (prefix_guess / "configs").is_dir() and (prefix_guess / "data").is_dir():
-        return prefix_guess
+    for prefix_guess in (
+        Path(sys.prefix).parent,
+        Path(sys.executable).absolute().parent.parent.parent,
+        Path(sys.executable).resolve().parent.parent.parent,
+    ):
+        if (prefix_guess / "configs").is_dir() and (prefix_guess / "data").is_dir():
+            return prefix_guess
     return src_root
 
 
@@ -71,14 +76,36 @@ def write_xml_atomic(path: str | Path, root: StdET.Element) -> Path:
     """Atomically write an XML Element to disk with UTF-8 encoding and LF line endings."""
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    tmp = target.with_name(target.name + ".tmp")
     content = to_xml_string(root, declaration=True)
-    with open(tmp, "w", encoding="utf-8", newline="\n") as fh:
-        fh.write(content)
-        fh.flush()
-        os.fsync(fh.fileno())
-    os.replace(tmp, target)
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{target.name}.", suffix=".tmp", dir=target.parent)
+    tmp_path = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(content)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp_path, target)
+    except Exception:
+        tmp_path.unlink(missing_ok=True)
+        raise
     return target
+
+
+def parse_temp_range(range_str: str | None) -> tuple[int, int] | None:
+    """Parse a nozzle/bed temperature range string into (low, high) integer Celsius bounds."""
+    if not range_str:
+        return None
+    m = re.search(r"(\d+)\s*[-~–]+\s*(\d+)", str(range_str))
+    if m:
+        return int(m.group(1)), int(m.group(2))
+    m_to = re.search(r"(\d+)\s+to\s+(\d+)", str(range_str), flags=re.IGNORECASE)
+    if m_to:
+        return int(m_to.group(1)), int(m_to.group(2))
+    m_single = re.fullmatch(r"\s*(\d+)\s*°?\s*[cC]?\s*", str(range_str))
+    if m_single:
+        v = int(m_single.group(1))
+        return v, v
+    return None
 
 
 @dataclass
@@ -147,18 +174,14 @@ class FilamentItem:
     photos: list[int] = field(default_factory=lambda: [0])
 
     def __post_init__(self) -> None:
-        if self.nozzle is None and self.nozzle_range and "-" in self.nozzle_range:
-            try:
-                lo, hi = self.nozzle_range.split("-", 1)
-                self.nozzle = (int(lo) + int(hi)) // 2
-            except ValueError:
-                pass
-        if self.bed is None and self.bed_range and "-" in self.bed_range:
-            try:
-                lo, hi = self.bed_range.split("-", 1)
-                self.bed = (int(lo) + int(hi)) // 2
-            except ValueError:
-                pass
+        if self.nozzle is None:
+            parsed_n = parse_temp_range(self.nozzle_range)
+            if parsed_n is not None:
+                self.nozzle = (parsed_n[0] + parsed_n[1]) // 2
+        if self.bed is None:
+            parsed_b = parse_temp_range(self.bed_range)
+            if parsed_b is not None:
+                self.bed = (parsed_b[0] + parsed_b[1]) // 2
 
     @property
     def name(self) -> str:
@@ -284,18 +307,17 @@ class FilamentItem:
         bed_range = s_attr.get("bed-range") or None
         nozzle = _opt_int(s_attr.get("nozzle"))
         bed = _opt_int(s_attr.get("bed"))
-        if nozzle is None and nozzle_range and "-" in nozzle_range:
-            parts = nozzle_range.split("-", 1)
-            try:
-                nozzle = (int(parts[0]) + int(parts[1])) // 2
-            except ValueError:
-                pass
-        if bed is None and bed_range and "-" in bed_range:
-            parts = bed_range.split("-", 1)
-            try:
-                bed = (int(parts[0]) + int(parts[1])) // 2
-            except ValueError:
-                pass
+        if nozzle is None:
+            parsed_n = parse_temp_range(nozzle_range)
+            if parsed_n is not None:
+                nozzle = (parsed_n[0] + parsed_n[1]) // 2
+        if bed is None:
+            parsed_b = parse_temp_range(bed_range)
+            if parsed_b is not None:
+                bed = (parsed_b[0] + parsed_b[1]) // 2
+
+        parsed_net = _opt_int(s_attr.get("net-grams"))
+        parsed_tare = _opt_int(s_attr.get("tare-grams"))
 
         return cls(
             vendor=_text("vendor", "Unknown"),
@@ -305,8 +327,8 @@ class FilamentItem:
             color_family=_text("color-family", "Black"),
             color_hex=color_hex if color_hex and len(color_hex) == 6 else None,
             color_hex_source=hex_source,
-            net_grams=_opt_int(s_attr.get("net-grams")) or 1000,
-            tare_grams=_opt_int(s_attr.get("tare-grams")) or 200,
+            net_grams=parsed_net if parsed_net is not None else 1000,
+            tare_grams=parsed_tare if parsed_tare is not None else 200,
             density=float(s_attr.get("density", "1.24")),
             diameter=float(s_attr.get("diameter", "1.75")),
             nozzle_range=nozzle_range,
@@ -436,7 +458,7 @@ class IntakeReadResult:
             "questions": list(self.questions),
             "reader": {
                 "service": "filament-vision-server",
-                "module_version": "0.2.3",
+                "module_version": "0.2.4",
                 "tier_used": "gpu" if "gpu" in self.tier.lower() else "cpu",
                 "escalated": escalated,
                 "fallback_reason": fallback_reason,

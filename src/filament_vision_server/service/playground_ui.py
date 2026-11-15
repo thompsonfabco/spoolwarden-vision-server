@@ -108,6 +108,9 @@ PLAYGROUND_HTML = """<!DOCTYPE html>
         <input type="file" id="fileInput" accept=".heic,.heif,.jpg,.jpeg,.png,.webp" style="display:none">
       </div>
       <div class="controls">
+        <input type="password" id="authToken" placeholder="Bearer token (if server requires auth)" style="flex:1;padding:10px;border-radius:8px;border:1px solid #334155;background:#0f172a;color:var(--text);font-size:14px">
+      </div>
+      <div class="controls">
         <select id="tierSelect">
           <option value="both">Compare Both (CPU + GPU)</option>
           <option value="cpu" selected>CPU Hybrid Only (Fast)</option>
@@ -133,6 +136,19 @@ PLAYGROUND_HTML = """<!DOCTYPE html>
 let currentFile = null;
 const dropzone = document.getElementById('dropzone');
 const fileInput = document.getElementById('fileInput');
+const authTokenEl = document.getElementById('authToken');
+try { localStorage.removeItem('fvs_auth_token'); } catch (_) {}
+authTokenEl.value = sessionStorage.getItem('fvs_auth_token') || '';
+authTokenEl.addEventListener('change', () => {
+  sessionStorage.setItem('fvs_auth_token', authTokenEl.value.trim());
+});
+
+function pgAuthHeaders(extra = {}) {
+  const h = { ...extra };
+  const tok = (authTokenEl.value || sessionStorage.getItem('fvs_auth_token') || '').trim();
+  if (tok) h['Authorization'] = `Bearer ${tok}`;
+  return h;
+}
 
 dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('dragover'); });
 dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
@@ -207,7 +223,7 @@ async function runSelectedFile() {
     const b64 = reader.result.split(',')[1];
     const resp = await fetch('/api/test', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: pgAuthHeaders({'Content-Type': 'application/json'}),
       body: JSON.stringify({filename: currentFile.name, image_b64: b64, tier: tier})
     });
     const res = await resp.json();
@@ -219,7 +235,7 @@ async function runSelectedFile() {
 async function testRandomSeed() {
   const tier = document.getElementById('tierSelect').value;
   document.getElementById('statusText').textContent = `Loading random .HEIC seed photo (${tier.toUpperCase()})...`;
-  const resp = await fetch(`/api/random_seed?tier=${encodeURIComponent(tier)}`);
+  const resp = await fetch(`/api/random_seed?tier=${encodeURIComponent(tier)}`, { headers: pgAuthHeaders() });
   const res = await resp.json();
   updateUI(res);
 }
@@ -227,7 +243,7 @@ async function testRandomSeed() {
 async function testRandomHarvested() {
   const tier = document.getElementById('tierSelect').value;
   document.getElementById('statusText').textContent = `Loading random verified web spool (${tier.toUpperCase()})...`;
-  const resp = await fetch(`/api/random_harvested?tier=${encodeURIComponent(tier)}`);
+  const resp = await fetch(`/api/random_harvested?tier=${encodeURIComponent(tier)}`, { headers: pgAuthHeaders() });
   const res = await resp.json();
   updateUI(res);
 }
@@ -280,7 +296,8 @@ def run_playground_server(host: str = "127.0.0.1", port: int = 7861) -> None:
 
         def _enforce_origin(self) -> bool:
             origin = (self.headers.get("Origin") or "").strip() if self.headers else ""
-            if origin and not _is_trusted_origin(origin):
+            host_header = (self.headers.get("Host") or "").strip() if self.headers else ""
+            if origin and not _is_trusted_origin(origin, host_header):
                 self._send_json(403, {"error": f"Untrusted Origin header: {origin}"})
                 return False
             return True
@@ -298,7 +315,8 @@ def run_playground_server(host: str = "127.0.0.1", port: int = 7861) -> None:
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(data)))
             origin = (self.headers.get("Origin") or "").strip() if self.headers else ""
-            if origin and _is_trusted_origin(origin):
+            host_header = (self.headers.get("Host") or "").strip() if self.headers else ""
+            if origin and _is_trusted_origin(origin, host_header):
                 self.send_header("Access-Control-Allow-Origin", origin)
                 self.send_header("Vary", "Origin")
                 self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
@@ -311,7 +329,8 @@ def run_playground_server(host: str = "127.0.0.1", port: int = 7861) -> None:
                 return
             self.send_response(204)
             origin = (self.headers.get("Origin") or "").strip() if self.headers else ""
-            if origin and _is_trusted_origin(origin):
+            host_header = (self.headers.get("Host") or "").strip() if self.headers else ""
+            if origin and _is_trusted_origin(origin, host_header):
                 self.send_header("Access-Control-Allow-Origin", origin)
                 self.send_header("Vary", "Origin")
                 self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
@@ -360,8 +379,12 @@ def run_playground_server(host: str = "127.0.0.1", port: int = 7861) -> None:
                     self._send_json(404, {"error": f"No .HEIC seed images found in {seed_dir}"})
                     return
                 chosen = random.choice(files)
-                jpg_bytes = _decode_any_image_to_jpeg_bytes(chosen.read_bytes())
-                results = self._evaluate_tiers(jpg_bytes, tier)
+                try:
+                    jpg_bytes = _decode_any_image_to_jpeg_bytes(chosen.read_bytes())
+                    results = self._evaluate_tiers(jpg_bytes, tier)
+                except Exception as exc:
+                    self._send_json(400, {"error": str(exc)})
+                    return
                 self._send_json(
                     200,
                     {
@@ -388,8 +411,12 @@ def run_playground_server(host: str = "127.0.0.1", port: int = 7861) -> None:
                     self._send_json(404, {"error": "No sample images found under data/harvested, seed_converted, or feedback_verified"})
                     return
                 chosen = random.choice(files)
-                jpg_bytes = _decode_any_image_to_jpeg_bytes(chosen.read_bytes())
-                results = self._evaluate_tiers(jpg_bytes, tier)
+                try:
+                    jpg_bytes = _decode_any_image_to_jpeg_bytes(chosen.read_bytes())
+                    results = self._evaluate_tiers(jpg_bytes, tier)
+                except Exception as exc:
+                    self._send_json(400, {"error": str(exc)})
+                    return
                 self._send_json(
                     200,
                     {
@@ -408,7 +435,7 @@ def run_playground_server(host: str = "127.0.0.1", port: int = 7861) -> None:
             if not self._check_auth():
                 self._send_json(401, {"error": "Missing or invalid bearer token"})
                 return
-            if self.path != "/api/test":
+            if urlparse(self.path).path != "/api/test":
                 self._send_json(404, {"error": "Not found"})
                 return
             if (self.headers.get("Transfer-Encoding") or "").strip():

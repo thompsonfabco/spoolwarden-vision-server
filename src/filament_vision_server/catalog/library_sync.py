@@ -418,6 +418,31 @@ def enrich_filament_library(library_root: str | Path = DEFAULT_LIBRARY_ROOT, wri
     return stats
 
 
+def normalize_bed_range(raw: str | None, default: str = "45-60") -> str:
+    """Normalize heterogeneous bed temperature strings to strict '<lo>-<hi>' Celsius bounds."""
+    s = (raw or "").strip()
+    if not s:
+        return default
+    m_pm = re.search(r"(\d+)\s*\+/-\s*(\d+)", s)
+    if m_pm:
+        center, tol = int(m_pm.group(1)), int(m_pm.group(2))
+        return f"{max(0, center - tol)}-{center + tol}"
+    m_rt = re.search(r"(?:no\s*heating|rt|room\s*temp(?:erature)?)\s*[-~–]+\s*(\d+)", s, flags=re.IGNORECASE)
+    if m_rt:
+        return f"25-{int(m_rt.group(1))}"
+    m_range = re.search(r"(\d+)\s*[-~–]+\s*(\d+)", s)
+    if m_range:
+        return f"{int(m_range.group(1))}-{int(m_range.group(2))}"
+    m_lt = re.match(r"^\s*<\s*(\d+)", s)
+    if m_lt:
+        return f"25-{int(m_lt.group(1))}"
+    m_single = re.match(r"^\s*(\d+)(?:\s*\([^)]*\))?\s*$", s)
+    if m_single:
+        v = int(m_single.group(1))
+        return f"{v}-{v}"
+    return default
+
+
 def build_master_catalog_xml(
     library_root: str | Path = DEFAULT_LIBRARY_ROOT,
     output_xml: str | Path = MASTER_CATALOG_XML,
@@ -484,12 +509,13 @@ def build_master_catalog_xml(
             low_t = (fields.get("nozzle_temperature_range_low") or [None])[0]
             high_t = (fields.get("nozzle_temperature_range_high") or [None])[0]
             nozzle_range = f"{low_t}-{high_t}" if low_t and high_t else "190-230"
-            bed_range = (
+            raw_bed = (
                 ranges.get("bed_all_plates")
                 or ranges.get("textured_plate_temp")
                 or ranges.get("hot_plate_temp")
                 or "45-60"
             )
+            bed_range = normalize_bed_range(str(raw_bed))
             density = (fields.get("filament_density") or ["1.24"])[0]
             diameter = (fields.get("filament_diameter") or ["1.75"])[0]
 

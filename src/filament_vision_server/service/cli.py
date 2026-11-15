@@ -88,7 +88,10 @@ def main(argv: list[str] | None = None) -> int:
     p_upd.add_argument("--key-file", default=None, help="Ed25519 PEM private key for --release-version")
 
     args = parser.parse_args(argv)
-    cfg = load_service_config()
+    if args.cmd == "config":
+        cfg = load_service_config(include_env=False)
+    else:
+        cfg = load_service_config()
 
     if args.cmd == "serve":
         host = args.host or cfg.get("host", DEFAULT_HOST)
@@ -139,19 +142,27 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{'Updated' if changed else 'Current'} config ({out_path}): {safe_cfg}")
         return 0
 
+    def _fmt_host(h: str) -> str:
+        clean = (h or "").strip()
+        if ":" in clean and not clean.startswith("["):
+            return f"[{clean}]"
+        return clean
+
     if args.cmd == "status":
         probe_host = "127.0.0.1" if cfg["host"] in ("0.0.0.0", "::", "") else cfg["host"]
+        probe_url = f"http://{_fmt_host(probe_host)}:{cfg['port']}"
         client = LocalIntakeClient(
-            base_url=f"http://{probe_host}:{cfg['port']}",
+            base_url=probe_url,
             token=str(cfg.get("token", "")),
         )
         try:
             h = client.health()
-            print(f"Daemon: RUNNING at http://{probe_host}:{cfg['port']} -> {h}")
+            print(f"Daemon: RUNNING at {probe_url} -> {h}")
         except Exception:
             rec = FilamentRecognizer(default_tier=cfg["tier"])
+            cfg_url = f"http://{_fmt_host(cfg['host'])}:{cfg['port']}"
             print(
-                f"Daemon: STOPPED (configured for http://{cfg['host']}:{cfg['port']}, "
+                f"Daemon: STOPPED (configured for {cfg_url}, "
                 f"tier={cfg['tier']}, gpu_available={rec.gpu_available()})"
             )
         return 0

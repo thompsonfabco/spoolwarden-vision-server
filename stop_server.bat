@@ -8,7 +8,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$stopped = $false; " ^
   "if (Test-Path $pidFile) { " ^
   "  $raw = (Get-Content $pidFile -ErrorAction SilentlyContinue | Select-Object -First 1); " ^
-  "  if ($raw -match '^\d+$') { $pidNum = [int]$raw; $cim = Get-CimInstance Win32_Process -Filter \"ProcessId = $pidNum\" -ErrorAction SilentlyContinue; if ($cim -and (($cim.CommandLine -match 'filament[_-]vision[_-]server|spool-server') -or ($cim.Name -match '^(python|filament|spool)'))) { Stop-Process -Id $pidNum -Force -ErrorAction SilentlyContinue; $stopped = $true; Write-Host ('[stop_server.bat] Stopped PID ' + $raw) } }; " ^
+  "  if ($raw -match '^\d+$') { $pidNum = [int]$raw; $cim = Get-CimInstance Win32_Process -Filter \"ProcessId = $pidNum\" -ErrorAction SilentlyContinue; if ($cim -and ($cim.CommandLine -match 'filament[_-]vision[_-]server|spool-server')) { Stop-Process -Id $pidNum -Force -ErrorAction SilentlyContinue; $stopped = $true; Write-Host ('[stop_server.bat] Stopped PID ' + $raw) } }; " ^
   "  Remove-Item $pidFile -Force -ErrorAction SilentlyContinue; " ^
   "}; " ^
   "$normRoot = $root.ToLowerInvariant(); " ^

@@ -4,6 +4,7 @@ from __future__ import annotations
 import io
 import logging
 import os
+import re
 import time
 import warnings
 from pathlib import Path
@@ -62,6 +63,7 @@ def _create_ort_session(model_path: str | Path, sess_opts: ort.SessionOptions, p
             return ort.InferenceSession(str(model_path), sess_options=sess_opts, providers=["CPUExecutionProvider"])
         raise
 
+from ..catalog.library_sync import OFFICIAL_COLOR_HEX_DB
 from ..catalog.matcher import CatalogMatcher
 from ..data_engine.auto_labeler import extract_multi_angle_ocr_and_boxes, parse_ocr_heuristic
 from ..xml_io import CONFIGS_DIR, PROJECT_ROOT, BoundingBox, FilamentItem, IntakeReadResult, parse_xml_file
@@ -132,19 +134,243 @@ def _softmax(x: np.ndarray) -> np.ndarray:
     return e_x / np.sum(e_x, axis=-1, keepdims=True)
 
 
+def merge_prediction_item(
+    items: list[FilamentItem],
+    it: FilamentItem,
+    photo_index: int,
+    matcher: CatalogMatcher,
+) -> None:
+    """Merge same-spool or multi-angle photos into an existing FilamentItem, or append as a new spool."""
+    for existing in items:
+        exact_same = (
+            existing.vendor == it.vendor
+            and existing.line == it.line
+            and existing.color_name == it.color_name
+            and existing.sealed == it.sealed
+        )
+        multi_angle_same = (
+            (existing.vendor == "Unknown" or it.vendor == "Unknown")
+            and not (existing.vendor == "Unknown" and it.vendor == "Unknown")
+            and existing.color_family == it.color_family
+            and existing.material == it.material
+            and existing.sealed == it.sealed
+        )
+        if exact_same or multi_angle_same:
+            if photo_index not in existing.photos:
+                existing.photos.append(photo_index)
+            if existing.vendor == "Unknown" and it.vendor != "Unknown":
+                existing.vendor = it.vendor
+                existing.confidence = max(existing.confidence, it.confidence)
+                if existing.line == existing.material and it.line != it.material:
+                    existing.line = it.line
+                if existing.color_name in ("unknown", existing.color_family) and it.color_name not in ("unknown", it.color_family):
+                    existing.color_name = it.color_name
+                    existing.color_hex = it.color_hex
+                matcher.enrich_item(existing)
+            elif it.vendor != "Unknown" and existing.vendor == it.vendor:
+                if existing.line == existing.material and it.line != it.material:
+                    existing.line = it.line
+                    matcher.enrich_item(existing)
+            return
+    items.append(it)
+
+
+_NOTE_SUBTYPES: tuple[str, ...] = (
+    "High Speed PLA+",
+    "Rapid PLA+",
+    "High Speed",
+    "Translucent",
+    "Sparkle",
+    "Galaxy",
+    "Marble",
+    "Tough",
+    "Basic",
+    "Matte",
+    "Rapid",
+    "PLA+",
+    "Plus",
+    "Silk",
+    "Glow",
+    "Wood",
+    "Lite",
+    "Pro",
+    "HF",
+    "CF",
+    "GF",
+)
+_NON_COLOR_SUBTYPE_TOKENS = {s.lower() for s in _NOTE_SUBTYPES} | {"aero", "metal"}
+_NEGATED_SEAL_PHRASES = (
+    "not sealed",
+    "not in box",
+    "not in a box",
+    "not vacuum",
+    "not in vacuum",
+    "not in bag",
+    "not in a bag",
+    "unsealed",
+    "bare",
+    "opened",
+    "open spool",
+)
+
+
+def apply_note_to_item(item: FilamentItem, note_clean: str, matcher: CatalogMatcher) -> None:
+    """Apply explicit user hint/revision note fields onto item and re-enrich from catalog."""
+    if not note_clean or not note_clean.strip():
+        return
+    clean = note_clean.strip()
+
+    # 1. Vendor match across canonical names & aliases (longest first)
+    sorted_aliases = sorted(matcher.vendor_aliases.keys(), key=len, reverse=True)
+    for alias_low in sorted_aliases:
+        if len(alias_low) < 2:
+            continue
+        if re.search(rf"(?<!\w){re.escape(alias_low)}(?!\w)", clean, re.IGNORECASE):
+            canon_v = matcher.vendor_aliases[alias_low]
+            if canon_v != item.vendor:
+                item.vendor = canon_v
+                item.line = item.material
+                item.nozzle_range = None
+                item.bed_range = None
+                item.nozzle = None
+                item.bed = None
+            break
+
+    # 2. Material match (longest alias first)
+    for mat_code in matcher._sorted_material_aliases:
+        if re.search(rf"(?<!\w){re.escape(mat_code)}(?:\b|(?=\+|\s|$)|(?!\w))", clean, re.IGNORECASE):
+            new_mat = matcher.material_aliases[mat_code]
+            item.material = new_mat
+            item.line = new_mat
+            item.nozzle_range = None
+            item.bed_range = None
+            item.nozzle = None
+            item.bed = None
+            break
+
+    # 3. Product line or subtype match (catalog product lines -> distinctive vendor line tokens -> subtypes)
+    line_matched = False
+    vendor_products = matcher.products_by_vendor.get(item.vendor, [])
+    if vendor_products:
+        seen_lines: list[tuple[str, str]] = []
+        seen_set: set[str] = set()
+        for prod in sorted(vendor_products, key=lambda p: len(p.line), reverse=True):
+            kl = prod.line.strip().lower()
+            if kl and kl not in seen_set:
+                seen_set.add(kl)
+                seen_lines.append((prod.line, prod.material))
+        for p_line, p_mat in seen_lines:
+            if re.search(rf"(?<!\w){re.escape(p_line)}(?:\b|(?=\+|\s|$)|(?!\w))", clean, re.IGNORECASE):
+                item.line = p_line
+                item.material = p_mat
+                item.nozzle_range = None
+                item.bed_range = None
+                item.nozzle = None
+                item.bed = None
+                line_matched = True
+                break
+
+        if not line_matched:
+            token_candidates: list[tuple[str, str, str]] = []
+            for p_line, p_mat in seen_lines:
+                if p_mat.lower() != (item.material or "").lower():
+                    continue
+                stripped = re.sub(rf"(?<!\w){re.escape(p_mat)}(?!\w)", "", p_line, flags=re.IGNORECASE).strip()
+                if len(stripped) >= 2 and stripped.lower() != p_mat.lower():
+                    token_candidates.append((stripped, p_line, p_mat))
+            token_candidates.sort(key=lambda t: len(t[0]), reverse=True)
+            for tok, p_line, p_mat in token_candidates:
+                if re.search(rf"(?<!\w){re.escape(tok)}(?:\b|(?=\+|\s|$)|(?!\w))", clean, re.IGNORECASE):
+                    item.line = p_line
+                    item.material = p_mat
+                    item.nozzle_range = None
+                    item.bed_range = None
+                    item.nozzle = None
+                    item.bed = None
+                    line_matched = True
+                    break
+
+    if not line_matched:
+        for sub in sorted(_NOTE_SUBTYPES, key=len, reverse=True):
+            if re.search(rf"(?<!\w){re.escape(sub)}(?:\b|(?=\+|\s|$)|(?!\w))", clean, re.IGNORECASE):
+                if sub in ("High Speed PLA+", "Rapid PLA+"):
+                    item.material = "PLA"
+                    new_line = sub
+                elif sub in ("Plus", "PLA+"):
+                    new_line = f"{item.material}+" if item.material == "PLA" else f"{item.material} Plus"
+                else:
+                    new_line = f"{item.material} {sub}"
+                if new_line != item.line:
+                    item.line = new_line
+                    item.nozzle_range = None
+                    item.bed_range = None
+                    item.nozzle = None
+                    item.bed = None
+                break
+
+    # 4. Explicit color match (product colors first, then official color DB)
+    prod = matcher.match_product_line(item.vendor, item.line, item.material)
+    color_candidates: list[str] = []
+    if prod and prod.colors:
+        color_candidates.extend(c.name.strip() for c in prod.colors if c.name and c.name.strip())
+    color_candidates.extend(k.strip() for k in OFFICIAL_COLOR_HEX_DB.keys() if k and k.strip())
+    seen_colors: set[str] = set()
+    unique_colors: list[str] = []
+    for cname in sorted(color_candidates, key=len, reverse=True):
+        cl = cname.lower()
+        if cl not in seen_colors and cl not in _NON_COLOR_SUBTYPE_TOKENS:
+            seen_colors.add(cl)
+            unique_colors.append(cname)
+    for cname in unique_colors:
+        if re.search(rf"(?<!\w){re.escape(cname)}(?!\w)", clean, re.IGNORECASE):
+            item.color_name = cname
+            item.color_hex = None
+            item.color_hex_source = "catalog"
+            break
+
+    # 5. Sealed state detection (negated phrases checked BEFORE positive substrings)
+    nl = clean.lower()
+    if any(w in nl for w in _NEGATED_SEAL_PHRASES):
+        item.sealed = False
+        item.sealed_reason = "bare spool"
+    elif "in box" in nl or "boxed" in nl:
+        item.sealed = True
+        item.sealed_reason = "in box"
+    elif "vacuum" in nl or "bag" in nl or "sealed" in nl:
+        item.sealed = True
+        item.sealed_reason = "in vacuum bag"
+
+    matcher.enrich_item(item)
+    if re.search(r"\b2\.85\s*(?:mm)?\b|\b3\.00?\s*mm\b", clean, re.IGNORECASE):
+        item.diameter = 2.85
+    elif re.search(r"\b1\.75\s*(?:mm)?\b", clean, re.IGNORECASE):
+        item.diameter = 1.75
+
+
 class CPUHybridPipeline:
     """Fast CPU-only inference pipeline using ONNX Runtime, RapidOCR, and CatalogMatcher."""
 
     def __init__(
         self,
-        detector_onnx: str | Path = PROJECT_ROOT / "models" / "cpu" / "detector_rfdetr_n.onnx",
-        visual_onnx: str | Path = PROJECT_ROOT / "models" / "cpu" / "visual_multihead.onnx",
-        text_parser_path: str | Path = PROJECT_ROOT / "models" / "cpu" / "text_parser.npz",
+        detector_onnx: str | Path | None = None,
+        visual_onnx: str | Path | None = None,
+        text_parser_path: str | Path | None = None,
     ):
         self.det_input_size = 384
         self.det_conf_thresh = 0.35
         self.det_iou_thresh = 0.45
         self.vis_input_size = 224
+        self.circular_unwarp = True
+        self.ocr_det_limit_side_len = 960
+        self.ocr_use_angle_cls = True
+        self.fuzzy_threshold = 78.0
+        self.catalog_weight = 0.65
+        self.classifier_weight = 0.35
+
+        resolved_det = Path(detector_onnx) if detector_onnx is not None else (PROJECT_ROOT / "models" / "cpu" / "detector_rfdetr_n.onnx")
+        resolved_vis = Path(visual_onnx) if visual_onnx is not None else (PROJECT_ROOT / "models" / "cpu" / "visual_multihead.onnx")
+        resolved_tp = Path(text_parser_path) if text_parser_path is not None else (PROJECT_ROOT / "models" / "cpu" / "text_parser.npz")
+
         cfg_path = CONFIGS_DIR / "cpu_pipeline.xml"
         if cfg_path.is_file():
             try:
@@ -154,9 +380,25 @@ class CPUHybridPipeline:
                     self.det_input_size = int(det_el.attrib.get("input-size", str(self.det_input_size)))
                     self.det_conf_thresh = float(det_el.attrib.get("conf-threshold", str(self.det_conf_thresh)))
                     self.det_iou_thresh = float(det_el.attrib.get("iou-threshold", str(self.det_iou_thresh)))
+                    if detector_onnx is None and det_el.attrib.get("onnx-path"):
+                        resolved_det = PROJECT_ROOT / det_el.attrib["onnx-path"]
+                ocr_el = cfg_root.find("ocr")
+                if ocr_el is not None:
+                    self.ocr_det_limit_side_len = int(ocr_el.attrib.get("det-limit-side-len", str(self.ocr_det_limit_side_len)))
+                    self.ocr_use_angle_cls = ocr_el.attrib.get("use-angle-cls", "true").lower() == "true"
+                    self.circular_unwarp = ocr_el.attrib.get("circular-unwarp", "true").lower() == "true"
                 vis_el = cfg_root.find("visual-classifier")
                 if vis_el is not None:
                     self.vis_input_size = int(vis_el.attrib.get("input-size", str(self.vis_input_size)))
+                    if visual_onnx is None and vis_el.attrib.get("onnx-path"):
+                        resolved_vis = PROJECT_ROOT / vis_el.attrib["onnx-path"]
+                tp_el = cfg_root.find("text-parser")
+                if tp_el is not None:
+                    self.fuzzy_threshold = float(tp_el.attrib.get("fuzzy-threshold", str(self.fuzzy_threshold)))
+                    self.catalog_weight = float(tp_el.attrib.get("catalog-weight", str(self.catalog_weight)))
+                    self.classifier_weight = float(tp_el.attrib.get("classifier-weight", str(self.classifier_weight)))
+                    if text_parser_path is None and tp_el.attrib.get("model-path"):
+                        resolved_tp = PROJECT_ROOT / tp_el.attrib["model-path"]
             except Exception as exc:
                 log.warning("Failed to parse %s, using default thresholds: %s", cfg_path, exc)
 
@@ -169,12 +411,12 @@ class CPUHybridPipeline:
         sess_opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
 
         self.detector_session: ort.InferenceSession | None = None
-        if Path(detector_onnx).is_file():
-            self.detector_session = _create_ort_session(detector_onnx, sess_opts, self.providers)
+        if resolved_det.is_file():
+            self.detector_session = _create_ort_session(resolved_det, sess_opts, self.providers)
 
         self.visual_session: ort.InferenceSession | None = None
-        if Path(visual_onnx).is_file():
-            self.visual_session = _create_ort_session(visual_onnx, sess_opts, self.providers)
+        if resolved_vis.is_file():
+            self.visual_session = _create_ort_session(resolved_vis, sess_opts, self.providers)
 
         self.active_providers: list[str] = (
             self.visual_session.get_providers()
@@ -183,9 +425,8 @@ class CPUHybridPipeline:
         )
 
         self.text_parser: dict[str, Any] | None = None
-        tp_path = Path(text_parser_path)
-        if tp_path.is_file():
-            self.text_parser = load_text_parser_npz(tp_path)
+        if resolved_tp.is_file():
+            self.text_parser = load_text_parser_npz(resolved_tp)
 
     def _detect_regions(
         self,
@@ -382,7 +623,7 @@ class CPUHybridPipeline:
         is_spool = any(b.label in ("spool_flange", "spool_windings", "spool_label") for b in boxes)
 
         # If circular spool with minimal upright OCR text, try polar unwarping on detected spool crop
-        if is_spool and len(" ".join(ocr_lines)) < 16:
+        if self.circular_unwarp and is_spool and len(" ".join(ocr_lines)) < 16:
             spool_box = next(
                 (b for b in det_boxes if b.label in ("spool_label", "spool_flange") and (b.x2 - b.x1) > 0.15 and (b.y2 - b.y1) > 0.15),
                 None,
@@ -396,7 +637,7 @@ class CPUHybridPipeline:
             else:
                 unwarp_target = img_bgr
             strips = unwarp_circular_spool_label(unwarp_target)
-            for strip in strips[:2]:
+            for strip in strips:
                 res_s = run_rapidocr(self.ocr, strip)
                 if res_s:
                     for _, text, score in res_s:
@@ -465,26 +706,37 @@ class CPUHybridPipeline:
                         item.bed_range = None
 
         v_ven, v_conf = vis_preds.get("visual_vendor", ("Other", 0.0))
+        vendor_overridden = False
         if len(ocr_vendor_cands) > 1:
             if v_ven in ocr_vendor_cands and v_conf >= 0.70:
                 item.vendor = v_ven
+                vendor_overridden = True
             elif tp_ven in ocr_vendor_cands and tp_prob >= 0.50:
                 item.vendor = tp_ven
+                vendor_overridden = True
         elif heur_vendor == "Unknown":
             if v_ven != "Other" and v_conf >= 0.85 and v_conf > tp_prob:
                 item.vendor = v_ven
                 item.confidence = max(item.confidence, round(min(0.88, 0.78 + (v_conf - 0.85) * 0.50), 3))
                 if "vendor" not in item.estimates:
                     item.estimates.append("vendor")
+                vendor_overridden = True
             elif tp_prob >= 0.35:
                 item.vendor = tp_ven
                 item.confidence = round(min(0.90, 0.65 + tp_prob * 0.25), 3)
+                vendor_overridden = True
             elif v_ven != "Other" and v_conf >= 0.45:
                 item.vendor = v_ven
                 item.confidence = round(min(0.76, 0.55 + v_conf * 0.20), 3)
                 if "vendor" not in item.estimates:
                     item.estimates.append("vendor")
+                vendor_overridden = True
+        if vendor_overridden and item.nozzle_range == "190-230":
+            item.nozzle_range = None
+        if vendor_overridden and item.bed_range in ("35-55", "45-60"):
+            item.bed_range = None
 
+        has_ocr = bool(ocr_lines)
         if vis_preds:
             v_col, c_conf = vis_preds["color_family"]
             v_fin, f_conf = vis_preds["visual_finish"]
@@ -496,13 +748,15 @@ class CPUHybridPipeline:
                     item.color_name = "unknown"
 
             # If no label text at all, infer subtype from visual finish
-            if not ocr_lines:
+            if not has_ocr:
                 item.source_type = "exposed_spool"
                 if v_fin in ("Matte", "Silk", "Galaxy", "Translucent", "Wood", "Glow") and f_conf >= 0.45:
                     item.line = f"{item.material} {v_fin}"
                 elif v_fin == "CF" and f_conf >= 0.50:
                     item.material = "PLA-CF"
                     item.line = "PLA-CF"
+                    item.nozzle_range = None
+                    item.bed_range = None
 
         # Robust sealed state determination
         joined_ocr_lower = " ".join(ocr_lines).lower()
@@ -522,7 +776,7 @@ class CPUHybridPipeline:
         elif v_state == "bare_spool" and s_conf >= 0.50:
             item.sealed = False
             item.sealed_reason = "bare spool"
-            item.source_type = "spool_label"
+            item.source_type = "spool_label" if has_ocr else "exposed_spool"
         elif v_state == "in_box" and s_conf >= 0.70 and not is_spool:
             item.sealed = True
             item.sealed_reason = "in box"
@@ -534,7 +788,7 @@ class CPUHybridPipeline:
             # Spool images without explicit vacuum bag text or high-confidence bag packaging are opened spools
             item.sealed = False
             item.sealed_reason = "bare spool"
-            item.source_type = "spool_label"
+            item.source_type = "spool_label" if has_ocr else "exposed_spool"
         else:
             item.sealed = True
             item.sealed_reason = "in box"
@@ -549,42 +803,14 @@ class CPUHybridPipeline:
 
         for idx, img in enumerate(images):
             it = self.predict_image(img, photo_index=idx)
-            # Group photos of identical vendor + line + color, or fuse multi-angle photos of one spool
-            merged = False
-            for existing in items:
-                exact_same = (
-                    existing.vendor == it.vendor
-                    and existing.line == it.line
-                    and existing.color_name == it.color_name
-                    and existing.sealed == it.sealed
-                )
-                multi_angle_same = (
-                    (existing.vendor == "Unknown" or it.vendor == "Unknown")
-                    and not (existing.vendor == "Unknown" and it.vendor == "Unknown")
-                    and existing.color_family == it.color_family
-                    and existing.material == it.material
-                    and existing.sealed == it.sealed
-                )
-                if exact_same or multi_angle_same:
-                    if idx not in existing.photos:
-                        existing.photos.append(idx)
-                    if existing.vendor == "Unknown" and it.vendor != "Unknown":
-                        existing.vendor = it.vendor
-                        existing.confidence = max(existing.confidence, it.confidence)
-                        if existing.line == existing.material and it.line != it.material:
-                            existing.line = it.line
-                        if existing.color_name in ("unknown", existing.color_family) and it.color_name not in ("unknown", it.color_family):
-                            existing.color_name = it.color_name
-                            existing.color_hex = it.color_hex
-                        self.matcher.enrich_item(existing)
-                    elif it.vendor != "Unknown" and existing.vendor == it.vendor:
-                        if existing.line == existing.material and it.line != it.material:
-                            existing.line = it.line
-                            self.matcher.enrich_item(existing)
-                    merged = True
-                    break
-            if not merged:
-                items.append(it)
+            merge_prediction_item(items, it, idx, self.matcher)
+
+        if hint and hint.strip():
+            for it in items:
+                was_unknown = it.vendor == "Unknown"
+                apply_note_to_item(it, hint.strip(), self.matcher)
+                if was_unknown and it.vendor != "Unknown":
+                    it.confidence = max(it.confidence, 0.85)
 
         for it in items:
             if it.vendor == "Unknown":

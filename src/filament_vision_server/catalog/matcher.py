@@ -10,7 +10,7 @@ from typing import Any
 
 from rapidfuzz import fuzz, process
 
-from ..xml_io import CONFIGS_DIR, FilamentItem, parse_xml_file
+from ..xml_io import CONFIGS_DIR, FilamentItem, parse_temp_range, parse_xml_file
 from .library_sync import MASTER_CATALOG_XML, has_known_color_match, infer_color_hex_and_family
 
 
@@ -106,7 +106,7 @@ class CatalogMatcher:
             self.material_aliases.keys(), key=len, reverse=True
         )
         self._material_alias_patterns: list[tuple[str, re.Pattern[str]]] = [
-            (a, re.compile(rf"\b{re.escape(a)}(?:\b|(?=\+|\s|$))"))
+            (a, re.compile(rf"(?<!\w){re.escape(a)}(?!\w)"))
             for a in self._sorted_material_aliases
         ]
 
@@ -295,15 +295,18 @@ class CatalogMatcher:
         q = (line_query or material_hint or "PLA").strip()
         q_low = q.lower()
 
-        # Filter by base material if known
+        # Filter by base material strictly so missing specialty polymers do not cross-match unrelated polymers
         norm_mat = self.normalize_material(material_hint, line_query)
-        mat_candidates = [p for p in candidates if p.material.upper() == norm_mat.upper()] or candidates
+        mat_candidates = [p for p in candidates if p.material.upper() == norm_mat.upper()]
+        if not mat_candidates:
+            if not (material_hint or "").strip():
+                for prod in candidates:
+                    if prod.line.lower() == q_low:
+                        return prod
+            return None
 
-        # Exact match on line within matching material first, then all vendor lines
+        # Exact match on line within matching material
         for prod in mat_candidates:
-            if prod.line.lower() == q_low:
-                return prod
-        for prod in candidates:
             if prod.line.lower() == q_low:
                 return prod
 
@@ -391,11 +394,13 @@ class CatalogMatcher:
             item.line = prod.line
             item.material = prod.material
             item.density = prod.density
-            item.diameter = prod.diameter
+            if not item.diameter or item.diameter == 1.75:
+                item.diameter = prod.diameter
             item.tare_grams = prod.tare_grams
-            if not item.nozzle_range:
+            item.estimates = [e for e in item.estimates if e != "tare"]
+            if not item.nozzle_range or item.nozzle_range == "190-230":
                 item.nozzle_range = prod.nozzle_range
-            if not item.bed_range:
+            if not item.bed_range or item.bed_range in ("35-55", "45-60"):
                 item.bed_range = prod.bed_range
         else:
             item.tare_grams = self.vendor_tares.get(item.vendor, 200)
@@ -403,9 +408,9 @@ class CatalogMatcher:
                 item.estimates.append("tare")
             mat_def = self.material_defaults.get(item.material, self.material_defaults.get("PLA", {}))
             item.density = float(mat_def.get("density", 1.24))
-            if not item.nozzle_range:
+            if not item.nozzle_range or item.nozzle_range == "190-230":
                 item.nozzle_range = str(mat_def.get("nozzle_range", "190-230"))
-            if not item.bed_range:
+            if not item.bed_range or item.bed_range in ("35-55", "45-60"):
                 item.bed_range = str(mat_def.get("bed_range", "45-60"))
 
         cname, chex, cfam, hsource = self.resolve_color(
@@ -421,17 +426,11 @@ class CatalogMatcher:
         if hsource == "estimate" and "color_hex" not in item.estimates:
             item.estimates.append("color_hex")
 
-        if item.nozzle_range and "-" in item.nozzle_range:
-            try:
-                lo, hi = item.nozzle_range.split("-", 1)
-                item.nozzle = (int(lo) + int(hi)) // 2
-            except ValueError:
-                pass
-        if item.bed_range and "-" in item.bed_range:
-            try:
-                lo, hi = item.bed_range.split("-", 1)
-                item.bed = (int(lo) + int(hi)) // 2
-            except ValueError:
-                pass
+        parsed_n = parse_temp_range(item.nozzle_range)
+        if parsed_n is not None:
+            item.nozzle = (parsed_n[0] + parsed_n[1]) // 2
+        parsed_b = parse_temp_range(item.bed_range)
+        if parsed_b is not None:
+            item.bed = (parsed_b[0] + parsed_b[1]) // 2
 
         return item

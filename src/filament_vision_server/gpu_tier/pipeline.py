@@ -14,7 +14,7 @@ import numpy as np
 from PIL import Image
 
 from ..catalog.matcher import CatalogMatcher
-from ..cpu_tier.pipeline import CPUHybridPipeline
+from ..cpu_tier.pipeline import CPUHybridPipeline, merge_prediction_item
 from ..xml_io import CONFIGS_DIR, PROJECT_ROOT, FilamentItem, IntakeReadResult, parse_xml_file
 from .prompts import SYSTEM_PROMPT, USER_PROMPT
 
@@ -97,18 +97,18 @@ class GPUVLMPipeline:
 
     def __init__(
         self,
-        adapter_dir: str | Path = PROJECT_ROOT / "models" / "gpu" / "qwen25_vl_7b_filament_lora",
-        base_model_id: str = "Qwen/Qwen2.5-VL-7B-Instruct",
-        device: str = "cuda:0",
-        load_in_4bit: bool = True,
+        adapter_dir: str | Path | None = None,
+        base_model_id: str | None = None,
+        device: str | None = None,
+        load_in_4bit: bool | None = None,
         idle_unload_seconds: float | None = None,
         cpu_helper: CPUHybridPipeline | None = None,
         matcher: CatalogMatcher | None = None,
     ):
-        self.adapter_dir = Path(adapter_dir)
-        self.base_model_id = base_model_id
-        self.device = device
-        self.load_in_4bit = load_in_4bit
+        self.adapter_dir = Path(adapter_dir) if adapter_dir is not None else (PROJECT_ROOT / "models" / "gpu" / "qwen25_vl_7b_filament_lora")
+        self.base_model_id = base_model_id or "Qwen/Qwen2.5-VL-7B-Instruct"
+        self.device = device or "cuda:0"
+        self.load_in_4bit = True if load_in_4bit is None else bool(load_in_4bit)
         self.min_pixels = 256 * 28 * 28
         self.max_pixels = 640 * 28 * 28
         self.max_new_tokens = 165
@@ -121,11 +121,18 @@ class GPUVLMPipeline:
                 cfg_root = parse_xml_file(cfg_path)
                 bm_el = cfg_root.find("base-model")
                 if bm_el is not None:
+                    if base_model_id is None and bm_el.attrib.get("repo-id"):
+                        self.base_model_id = bm_el.attrib["repo-id"]
+                    if adapter_dir is None and bm_el.attrib.get("adapter-dir"):
+                        self.adapter_dir = PROJECT_ROOT / bm_el.attrib["adapter-dir"]
                     self.min_pixels = int(bm_el.attrib.get("min-pixels", str(self.min_pixels)))
                     self.max_pixels = int(bm_el.attrib.get("max-pixels", str(self.max_pixels)))
                 inf_el = cfg_root.find("inference")
                 if inf_el is not None:
-                    self.device = inf_el.attrib.get("default-device", self.device)
+                    if device is None and inf_el.attrib.get("default-device"):
+                        self.device = inf_el.attrib["default-device"]
+                    if load_in_4bit is None and "low-vram-4bit" in inf_el.attrib:
+                        self.load_in_4bit = inf_el.attrib["low-vram-4bit"].lower() == "true"
                     self.max_new_tokens = int(inf_el.attrib.get("max-new-tokens", str(self.max_new_tokens)))
                     self.do_sample = inf_el.attrib.get("do-sample", "false").lower() == "true"
                     xml_idle = float(inf_el.attrib.get("idle-unload-seconds", str(xml_idle)))
@@ -226,6 +233,7 @@ class GPUVLMPipeline:
         image_input: str | Path | bytes | np.ndarray,
         photo_index: int = 0,
         cpu_prior: FilamentItem | None = None,
+        hint: str = "",
     ) -> FilamentItem:
         import torch
 
@@ -244,8 +252,10 @@ class GPUVLMPipeline:
         # Reuse escalated CPU prior if already computed, otherwise run CPU helper
         if cpu_prior is None:
             cpu_prior = self.cpu_helper.predict_image(image_input, photo_index=photo_index)
+        hint_line = f"User hint: {hint.strip()}\n" if hint and hint.strip() else ""
         hint_prompt = (
             f"{USER_PROMPT}\n"
+            f"{hint_line}"
             f"OCR/Visual prior hint: vendor={cpu_prior.vendor}, line={cpu_prior.line}, "
             f"material={cpu_prior.material}, color={cpu_prior.color_name} ({cpu_prior.color_family}). "
             "Verify against the image and output the exact <intake-read> XML."
@@ -313,6 +323,7 @@ class GPUVLMPipeline:
         self,
         images: list[str | Path | bytes | np.ndarray],
         cpu_priors: list[FilamentItem] | None = None,
+        hint: str = "",
     ) -> IntakeReadResult:
         t0 = time.perf_counter()
         items: list[FilamentItem] = []
@@ -320,22 +331,13 @@ class GPUVLMPipeline:
 
         for idx, img in enumerate(images):
             prior = cpu_priors[idx] if (cpu_priors is not None and idx < len(cpu_priors)) else None
-            it = self.predict_image(img, photo_index=idx, cpu_prior=prior)
-            merged = False
-            for existing in items:
-                if (
-                    existing.vendor == it.vendor
-                    and existing.line == it.line
-                    and existing.color_name == it.color_name
-                    and existing.sealed == it.sealed
-                ):
-                    existing.photos.append(idx)
-                    merged = True
-                    break
-            if not merged:
-                items.append(it)
+            it = self.predict_image(img, photo_index=idx, cpu_prior=prior, hint=hint)
+            merge_prediction_item(items, it, idx, self.matcher)
+
+        for it in items:
             if it.vendor == "Unknown":
-                questions.append(f"Photo {idx}: Please confirm filament brand (detected {it.line} {it.color_name}).")
+                first_photo = it.photos[0] if it.photos else 0
+                questions.append(f"Photo {first_photo}: Please confirm filament brand (detected {it.line} {it.color_name}).")
 
         elapsed_ms = (time.perf_counter() - t0) * 1000.0
         return IntakeReadResult(

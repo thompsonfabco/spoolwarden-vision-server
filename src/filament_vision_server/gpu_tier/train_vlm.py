@@ -10,7 +10,17 @@ import torch
 from PIL import Image
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 
-from ..xml_io import DATA_DIR, PROJECT_ROOT, AnnotatedSample, IntakeReadResult, load_dataset_xml, load_training_samples_with_feedback, write_xml_atomic
+from ..xml_io import (
+    CONFIGS_DIR,
+    DATA_DIR,
+    PROJECT_ROOT,
+    AnnotatedSample,
+    IntakeReadResult,
+    load_dataset_xml,
+    load_training_samples_with_feedback,
+    parse_xml_file,
+    write_xml_atomic,
+)
 from .prompts import SYSTEM_PROMPT, USER_PROMPT
 
 
@@ -31,8 +41,8 @@ def train_gpu_vlm_lora(
     output_dir: str | Path = PROJECT_ROOT / "models" / "gpu" / "qwen25_vl_7b_filament_lora",
     base_model_id: str = "Qwen/Qwen2.5-VL-7B-Instruct",
     max_steps: int = 240,
-    lr: float = 1.5e-4,
-    grad_accum: int = 4,
+    lr: float | None = None,
+    grad_accum: int | None = None,
     seed: int = 42,
     use_4bit: bool = True,
 ) -> dict[str, Any]:
@@ -41,6 +51,37 @@ def train_gpu_vlm_lora(
 
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA GPU required for Qwen2.5-VL-7B LoRA training")
+
+    cfg_lr, cfg_grad_accum, cfg_warmup = 2e-4, 4, 0.05
+    lora_r, lora_alpha, lora_dropout = 16, 32, 0.05
+    cfg_min_px, cfg_max_px = 256 * 28 * 28, 640 * 28 * 28
+    target_modules = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
+    cfg_path = CONFIGS_DIR / "gpu_vlm_lora.xml"
+    if cfg_path.is_file():
+        try:
+            cfg_root = parse_xml_file(cfg_path)
+            bm_el = cfg_root.find("base-model")
+            if bm_el is not None:
+                cfg_min_px = int(bm_el.attrib.get("min-pixels", str(cfg_min_px)))
+                cfg_max_px = int(bm_el.attrib.get("max-pixels", str(cfg_max_px)))
+            lora_el = cfg_root.find("lora")
+            if lora_el is not None:
+                lora_r = int(lora_el.attrib.get("r", str(lora_r)))
+                lora_alpha = int(lora_el.attrib.get("alpha", str(lora_alpha)))
+                lora_dropout = float(lora_el.attrib.get("dropout", str(lora_dropout)))
+                tms = [(m.text or "").strip() for m in lora_el.findall("target-module") if (m.text or "").strip()]
+                if tms:
+                    target_modules = tms
+            tr_el = cfg_root.find("training")
+            if tr_el is not None:
+                cfg_grad_accum = int(tr_el.attrib.get("grad-accum", str(cfg_grad_accum)))
+                cfg_lr = float(tr_el.attrib.get("lr", str(cfg_lr)))
+                cfg_warmup = float(tr_el.attrib.get("warmup-ratio", str(cfg_warmup)))
+        except Exception:
+            pass
+
+    eff_lr = cfg_lr if lr is None else float(lr)
+    eff_grad_accum = cfg_grad_accum if grad_accum is None else int(grad_accum)
 
     random.seed(seed)
     torch.manual_seed(seed)
@@ -54,6 +95,8 @@ def train_gpu_vlm_lora(
     random.shuffle(real_samples)
     random.shuffle(syn_samples)
     curated_train = real_samples + syn_samples[:160]
+    if not curated_train:
+        raise ValueError("No valid training samples with existing images found")
     random.shuffle(curated_train)
 
     from .pipeline import verify_pinned_base_model
@@ -68,8 +111,8 @@ def train_gpu_vlm_lora(
     print(f"[GPU-VLM] Loading {base_model_id} ({'4-bit NF4' if use_4bit else 'bfloat16'}) on {torch.cuda.get_device_name(0)}...")
     processor = AutoProcessor.from_pretrained(
         verified_src,
-        min_pixels=256 * 28 * 28,
-        max_pixels=640 * 28 * 28,
+        min_pixels=cfg_min_px,
+        max_pixels=cfg_max_px,
     )
     quant_cfg = (
         BitsAndBytesConfig(
@@ -91,22 +134,22 @@ def train_gpu_vlm_lora(
         model = prepare_model_for_kbit_training(model)
 
     lora_cfg = LoraConfig(
-        r=16,
-        lora_alpha=32,
-        lora_dropout=0.05,
+        r=lora_r,
+        lora_alpha=lora_alpha,
+        lora_dropout=lora_dropout,
         bias="none",
-        target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
+        target_modules=target_modules,
         task_type="CAUSAL_LM",
     )
     model = get_peft_model(model, lora_cfg)
     model.print_trainable_parameters()
     model.train()
 
-    optimizer = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad], lr=lr, weight_decay=0.01)
-    total_opt_steps = max(1, (max_steps + grad_accum - 1) // grad_accum)
+    optimizer = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad], lr=eff_lr, weight_decay=0.01)
+    total_opt_steps = max(1, (max_steps + eff_grad_accum - 1) // eff_grad_accum)
     scheduler = get_cosine_schedule_with_warmup(
         optimizer,
-        num_warmup_steps=max(2, total_opt_steps // 10),
+        num_warmup_steps=max(2, int(round(total_opt_steps * cfg_warmup))),
         num_training_steps=total_opt_steps,
     )
 
@@ -154,11 +197,11 @@ def train_gpu_vlm_lora(
             labels[:, :prompt_len] = -100
 
             outputs = model(**inputs, labels=labels)
-            loss = outputs.loss / grad_accum
+            loss = outputs.loss / eff_grad_accum
             loss.backward()
             running_loss += float(outputs.loss.item())
 
-            if (step + 1) % grad_accum == 0 or (step + 1) == max_steps:
+            if (step + 1) % eff_grad_accum == 0 or (step + 1) == max_steps:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
                 optimizer.step()
                 scheduler.step()
@@ -176,12 +219,15 @@ def train_gpu_vlm_lora(
     model.save_pretrained(str(out_path))
     processor.save_pretrained(str(out_path))
 
+    out_res = out_path.resolve()
+    proj_res = PROJECT_ROOT.resolve()
+    rel_adapter = str(out_res.relative_to(proj_res)) if out_res.is_relative_to(proj_res) else str(out_path)
     meta_root = StdET.Element(
         "gpu-vlm-meta",
         attrib={
             "version": "1",
             "base-model": base_model_id,
-            "adapter-dir": str(out_path.relative_to(PROJECT_ROOT)).replace("\\", "/"),
+            "adapter-dir": rel_adapter.replace("\\", "/"),
             "steps": str(max_steps),
             "final-loss": f"{final_loss:.4f}",
             "val-samples": str(len(val_samples)),

@@ -12,7 +12,7 @@ def launch_review_ui(xml_path: str | Path = DATA_DIR / "annotations" / "seed_lab
         import gradio as gr
     except ImportError as exc:
         raise RuntimeError(
-            "Gradio is required for review-ui; install it with 'pip install gradio'"
+            "Gradio is required for review-ui; install it with 'pip install -e \".[review]\"' or 'pip install gradio'"
         ) from exc
 
     samples = load_dataset_xml(xml_path)

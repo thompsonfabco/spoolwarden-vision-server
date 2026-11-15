@@ -32,7 +32,7 @@ function Stop-FilamentServerProcess {
         if ($rawPid -match '^\d+$') {
             $pidNum = [int]$rawPid
             $cim = Get-CimInstance Win32_Process -Filter "ProcessId = $pidNum" -ErrorAction SilentlyContinue
-            if ($cim -and (($cim.CommandLine -match 'filament[_-]vision[_-]server|spool-server') -or ($cim.Name -match '^(python|filament|spool)'))) {
+            if ($cim -and (($cim.CommandLine -match 'filament[_-]vision[_-]server|spool-server') -or ($cim.Name -match '^filament-vision-server'))) {
                 Write-Host "[install.ps1] Stopping server PID $rawPid..."
                 Stop-Process -Id $pidNum -Force -ErrorAction SilentlyContinue
             }
@@ -493,15 +493,42 @@ if (-not (Test-Path $TargetPrefix)) {
     New-Item -ItemType Directory -Path $TargetPrefix -Force | Out-Null
 }
 
+function Copy-FilamentModelAssets {
+    param([string]$SrcModelsDir, [string]$DstModelsDir)
+    $dstCpuModels = Join-Path $DstModelsDir "cpu"
+    New-Item -ItemType Directory -Path $dstCpuModels -Force | Out-Null
+    $srcCpuModels = Join-Path $SrcModelsDir "cpu"
+    if (Test-Path $srcCpuModels) {
+        Get-ChildItem -Path $srcCpuModels -File | Where-Object { $_.Extension -notin @('.pt', '.pth', '.ckpt') } | ForEach-Object {
+            Copy-Item -Path $_.FullName -Destination (Join-Path $dstCpuModels $_.Name) -Force
+        }
+    }
+    Get-ChildItem -Path $SrcModelsDir -File -ErrorAction SilentlyContinue | Where-Object { $_.Extension -in @('.onnx', '.npz', '.xml', '.json') } | ForEach-Object {
+        Copy-Item -Path $_.FullName -Destination (Join-Path $dstCpuModels $_.Name) -Force
+    }
+    $srcGpuModels = Join-Path $SrcModelsDir "gpu"
+    if (Test-Path $srcGpuModels) {
+        $dstGpuModels = Join-Path $DstModelsDir "gpu"
+        New-Item -ItemType Directory -Path $dstGpuModels -Force | Out-Null
+        Copy-Item -Path (Join-Path $srcGpuModels "*") -Destination $dstGpuModels -Recurse -Force
+    }
+}
+
 if ($TargetPrefix.TrimEnd('\') -ne $ProjectRoot.TrimEnd('\')) {
     Write-Host "[install.ps1] Copying assets into $TargetPrefix..."
-    foreach ($rel in @("configs", "data\catalog")) {
-        $srcPath = Join-Path $ProjectRoot $rel
-        $dstPath = Join-Path $TargetPrefix $rel
-        if (Test-Path $srcPath) {
-            New-Item -ItemType Directory -Path $dstPath -Force | Out-Null
-            Copy-Item -Path (Join-Path $srcPath "*") -Destination $dstPath -Recurse -Force
+    $dstConfigs = Join-Path $TargetPrefix "configs"
+    New-Item -ItemType Directory -Path $dstConfigs -Force | Out-Null
+    foreach ($cfgName in @("taxonomy.xml", "cpu_pipeline.xml", "gpu_vlm_lora.xml", "dataset_manifest.xml", "base-model.json")) {
+        $srcCfg = Join-Path (Join-Path $ProjectRoot "configs") $cfgName
+        if (Test-Path $srcCfg) {
+            Copy-Item -Path $srcCfg -Destination (Join-Path $dstConfigs $cfgName) -Force
         }
+    }
+    $srcCatalog = Join-Path $ProjectRoot "data\catalog"
+    $dstCatalog = Join-Path $TargetPrefix "data\catalog"
+    if (Test-Path $srcCatalog) {
+        New-Item -ItemType Directory -Path $dstCatalog -Force | Out-Null
+        Copy-Item -Path (Join-Path $srcCatalog "*") -Destination $dstCatalog -Recurse -Force
     }
     foreach ($batFile in @("start_server.bat", "stop_server.bat")) {
         $srcBat = Join-Path $ProjectRoot $batFile
@@ -509,13 +536,9 @@ if ($TargetPrefix.TrimEnd('\') -ne $ProjectRoot.TrimEnd('\')) {
             Copy-Item -Path $srcBat -Destination (Join-Path $TargetPrefix $batFile) -Force
         }
     }
-    $dstModels = Join-Path $TargetPrefix "models"
-    New-Item -ItemType Directory -Path $dstModels -Force | Out-Null
-    Copy-Item -Path (Join-Path $SourceModelsDir "*") -Destination $dstModels -Recurse -Force
+    Copy-FilamentModelAssets -SrcModelsDir $SourceModelsDir -DstModelsDir (Join-Path $TargetPrefix "models")
 } elseif ($SourceModelsDir.TrimEnd('\') -ne (Join-Path $ProjectRoot "models").TrimEnd('\')) {
-    $dstModels = Join-Path $ProjectRoot "models"
-    New-Item -ItemType Directory -Path $dstModels -Force | Out-Null
-    Copy-Item -Path (Join-Path $SourceModelsDir "*") -Destination $dstModels -Recurse -Force
+    Copy-FilamentModelAssets -SrcModelsDir $SourceModelsDir -DstModelsDir (Join-Path $ProjectRoot "models")
 }
 
 New-Item -ItemType Directory -Path (Join-Path $TargetPrefix "data\logs") -Force | Out-Null
@@ -535,7 +558,7 @@ $isInPlace = ($TargetPrefix.TrimEnd('\') -eq $ProjectRoot.TrimEnd('\'))
 
 if ($useGpuExtras -and $CudaReady) {
     Write-Host "[install.ps1] Installing CUDA-enabled PyTorch wheels (cu124)..."
-    & $venvPip install --no-cache-dir torch torchvision --extra-index-url https://download.pytorch.org/whl/cu124
+    & $venvPip install --no-cache-dir torch --extra-index-url https://download.pytorch.org/whl/cu124
     if ($LASTEXITCODE -ne 0) {
         Write-Warning "CUDA PyTorch index install failed; continuing with standard PyPI package resolution."
     }
@@ -563,21 +586,24 @@ if ($useGpuExtras -and $CudaReady) {
 }
 
 function Test-AndRepairPythonDependencies {
-    param([bool]$WantGpu)
+    param([bool]$WantGpu, [bool]$UseCuda = $false)
     $gpuFlag = if ($WantGpu) { "1" } else { "0" }
+    $cudaFlag = if ($UseCuda) { "1" } else { "0" }
     $probeScript = @"
 import importlib, sys
 want_gpu = sys.argv[1] == '1'
+use_cuda = sys.argv[2] == '1'
 checks = [
     ('defusedxml', 'defusedxml'),
     ('PIL', 'Pillow'),
     ('pillow_heif', 'pillow-heif'),
     ('numpy', 'numpy'),
     ('cv2', 'opencv-python-headless'),
-    ('onnxruntime', 'onnxruntime'),
+    ('onnxruntime', 'onnxruntime-gpu' if (want_gpu and use_cuda) else 'onnxruntime'),
     ('rapidfuzz', 'rapidfuzz'),
     ('rapidocr', 'rapidocr'),
     ('sklearn', 'scikit-learn'),
+    ('cryptography', 'cryptography'),
 ]
 if want_gpu:
     checks.extend([
@@ -597,7 +623,7 @@ for mod, pkg in checks:
 print(' '.join(dict.fromkeys(missing)))
 "@
     while ($true) {
-        $missingOut = (& $venvPy -c $probeScript $gpuFlag | Select-Object -First 1)
+        $missingOut = (& $venvPy -c $probeScript $gpuFlag $cudaFlag | Select-Object -First 1)
         $missingList = if ($missingOut) { $missingOut.Trim() } else { "" }
         if ([string]::IsNullOrWhiteSpace($missingList)) {
             Write-Host "[install.ps1] Verified all Python dependencies import cleanly."
@@ -605,9 +631,13 @@ print(' '.join(dict.fromkeys(missing)))
         }
         $pkgs = $missingList -split '\s+'
         Write-Host "[install.ps1] Attempting auto-repair for failed Python packages: $missingList"
-        & $venvPip install --no-cache-dir --force-reinstall @pkgs
+        if ($UseCuda -and ($pkgs -contains 'torch')) {
+            & $venvPip install --no-cache-dir --force-reinstall @pkgs --extra-index-url https://download.pytorch.org/whl/cu124
+        } else {
+            & $venvPip install --no-cache-dir --force-reinstall @pkgs
+        }
 
-        $stillOut = (& $venvPy -c $probeScript $gpuFlag | Select-Object -First 1)
+        $stillOut = (& $venvPy -c $probeScript $gpuFlag $cudaFlag | Select-Object -First 1)
         $stillList = if ($stillOut) { $stillOut.Trim() } else { "" }
         if ([string]::IsNullOrWhiteSpace($stillList)) {
             Write-Host "[install.ps1] Auto-repair succeeded; all Python dependencies verified."
@@ -624,18 +654,29 @@ print(' '.join(dict.fromkeys(missing)))
     }
 }
 
-Test-AndRepairPythonDependencies -WantGpu:$useGpuExtras
+Test-AndRepairPythonDependencies -WantGpu:$useGpuExtras -UseCuda:$CudaReady
 
-$env:FILAMENT_VISION_SERVER_HOME = $TargetPrefix
-& $venvPy -m filament_vision_server.service.cli config --tier $Tier --host $Bind --port $Port | Out-Null
-if ($LASTEXITCODE -ne 0) { throw "Failed to write service_config.xml." }
+$savedEnvVars = @{}
+foreach ($envName in @("FILAMENT_VISION_SERVER_TOKEN", "FILAMENT_KIT_VISION_TOKEN", "FILAMENT_VISION_SERVER_FEEDBACK_ENDPOINT", "FILAMENT_KIT_VISION_FEEDBACK_ENDPOINT")) {
+    $savedEnvVars[$envName] = [Environment]::GetEnvironmentVariable($envName, "Process")
+    [Environment]::SetEnvironmentVariable($envName, $null, "Process")
+}
+try {
+    $env:FILAMENT_VISION_SERVER_HOME = $TargetPrefix
+    & $venvPy -m filament_vision_server.service.cli config --tier $Tier --host $Bind --port $Port | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Failed to write service_config.xml." }
+} finally {
+    foreach ($envName in $savedEnvVars.Keys) {
+        [Environment]::SetEnvironmentVariable($envName, $savedEnvVars[$envName], "Process")
+    }
+}
 
-Set-Content -Path (Join-Path $TargetPrefix ".installed") -Value "0.2.3" -Encoding ASCII
+Set-Content -Path (Join-Path $TargetPrefix ".installed") -Value "0.2.4" -Encoding ASCII
 
 if ($RegisterStartup) {
     try {
-        $actionArgs = "serve --host $Bind --port $Port --tier $Tier"
-        $action = New-ScheduledTaskAction -Execute $venvCli -Argument $actionArgs -WorkingDirectory $TargetPrefix
+        $taskCmdArgs = "/c set `"FILAMENT_VISION_SERVER_HOME=$TargetPrefix`" && `"$venvCli`" serve"
+        $action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument $taskCmdArgs -WorkingDirectory $TargetPrefix
         $trigger = New-ScheduledTaskTrigger -AtLogOn
         $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
         Register-ScheduledTask -TaskName "FilamentVisionServer" -Action $action -Trigger $trigger -Settings $settings -Force | Out-Null
@@ -645,7 +686,7 @@ if ($RegisterStartup) {
     }
 }
 
-$healthHost = if ($Bind -eq "0.0.0.0" -or $Bind -eq "::") { "127.0.0.1" } else { $Bind }
+$healthHost = if ($Bind -eq "0.0.0.0" -or $Bind -eq "::") { "127.0.0.1" } elseif ($Bind.Contains(":")) { "[$Bind]" } else { $Bind }
 $baseUrl = "http://${healthHost}:${Port}"
 $healthUrl = "${baseUrl}/v1/health"
 
@@ -655,7 +696,7 @@ if ($Start) {
     $errLog = Join-Path $TargetPrefix "data\logs\server.err.log"
     Write-Host "[install.ps1] Starting background server on ${baseUrl}..."
     $proc = Start-Process -FilePath $venvPy `
-        -ArgumentList @("-m", "filament_vision_server.service.cli", "serve", "--host", $Bind, "--port", "$Port", "--tier", $Tier) `
+        -ArgumentList @("-m", "filament_vision_server.service.cli", "serve") `
         -WorkingDirectory $TargetPrefix `
         -WindowStyle Hidden `
         -RedirectStandardOutput $outLog `

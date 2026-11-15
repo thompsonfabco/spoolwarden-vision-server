@@ -18,7 +18,7 @@ Serves the built-in dark-mode Web UI HTML page (`text/html; charset=utf-8`). Una
 Returns daemon health, version, tier capabilities, auth requirement, and request limits:
 - `service`: `"filament-vision-server"`
 - `api_version`: `"1.1"`
-- `module_version`: `"0.2.3"`
+- `module_version`: `"0.2.4"`
 - `status`: `"ok"` or `"degraded"` (if `default_tier == "gpu"` and CUDA is unavailable)
 - `tiers`: `{ "cpu": {...}, "gpu": { "usable": bool, "reason": str, "loaded": bool } }`
 - `auth_required`: `bool`
@@ -55,7 +55,7 @@ Recognizes 1–8 filament spool or box images.
     "api_version": "1.1",
     "items": [ { "vendor": "...", "material": "...", "line": "...", "color_name": "...", "color_hex": "..." } ],
     "questions": [],
-    "reader": { "service": "filament-vision-server", "module_version": "0.2.3", "tier_used": "cpu", "escalated": false, "fallback_reason": null, "model": "...", "latency_ms": 120.5 },
+    "reader": { "service": "filament-vision-server", "module_version": "0.2.4", "tier_used": "cpu", "escalated": false, "fallback_reason": null, "model": "...", "latency_ms": 120.5 },
     "usage": { "model": "filament-vision-server/cpu", "input_tokens": 0, "cached": 0, "output_tokens": 0 }
   }
   ```

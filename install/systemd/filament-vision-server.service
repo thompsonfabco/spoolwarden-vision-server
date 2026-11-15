@@ -13,7 +13,7 @@ Environment="FILAMENT_VISION_SERVER_TIER=__TIER__"
 Environment="XDG_CACHE_HOME=__PREFIX__/data/cache"
 Environment="HOME=__PREFIX__/data"
 EnvironmentFile=-/etc/filament-vision-server/env
-ExecStart=__PREFIX__/.venv/bin/filament-vision-server serve --host __BIND__ --port __PORT__ --tier __TIER__
+ExecStart=__PREFIX__/.venv/bin/filament-vision-server serve
 Restart=on-failure
 RestartSec=3
 NoNewPrivileges=true

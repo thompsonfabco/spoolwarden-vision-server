@@ -1,4 +1,4 @@
-# Filament Vision Server — User QuickStart Guide (`v0.2.3`)
+# Filament Vision Server — User QuickStart Guide (`v0.2.4`)
 
 Welcome to **Filament Vision Server**! This guide takes you from downloading a release archive to recognizing your first filament spools, submitting training corrections, and exporting your inventory.
 
@@ -6,14 +6,14 @@ Welcome to **Filament Vision Server**! This guide takes you from downloading a r
 
 ## 1. Choose & Download Your Package
 
-Download the archive for your operating system from the [GitHub Releases page](https://github.com/thompsonfabco/filament-vision-server/releases/latest) (current release: [`v0.2.3`](https://github.com/thompsonfabco/filament-vision-server/releases/tag/v0.2.3)):
+Download the archive for your operating system from the [GitHub Releases page](https://github.com/thompsonfabco/filament-vision-server/releases/latest) (current release: [`v0.2.4`](https://github.com/thompsonfabco/filament-vision-server/releases/tag/v0.2.4)):
 
 | Platform | Package File | Size | Includes | Best For |
 | :--- | :--- | :---: | :--- | :--- |
-| **Windows (x64)** | `filament-vision-server-0.2.3-windows.zip` | ~316 MB | CPU ONNX tier + GPU VLM LoRA adapter | Windows 10/11 PCs with an NVIDIA CUDA GPU (`>= 8 GB` VRAM) |
-| **Windows (x64, CPU-Only)** | `filament-vision-server-0.2.3-windows-cpu.zip` | ~146 MB | CPU ONNX tier only | Any Windows 10/11 PC, laptop, or mini-PC without an NVIDIA GPU |
-| **Linux (x86_64)** | `filament-vision-server-0.2.3-linux.tar.gz` | ~316 MB | CPU ONNX tier + GPU VLM LoRA adapter | Linux desktops/servers with an NVIDIA CUDA GPU (`>= 8 GB` VRAM) |
-| **Linux (x86_64, CPU-Only)** | `filament-vision-server-0.2.3-linux-cpu.tar.gz` | ~146 MB | CPU ONNX tier only | Headless servers, containers, WSL, or PCs without a discrete GPU |
+| **Windows (x64)** | `filament-vision-server-0.2.4-windows.zip` | ~316 MB | CPU ONNX tier + GPU VLM LoRA adapter | Windows 10/11 PCs with an NVIDIA CUDA GPU (`>= 8 GB` VRAM) |
+| **Windows (x64, CPU-Only)** | `filament-vision-server-0.2.4-windows-cpu.zip` | ~146 MB | CPU ONNX tier only | Any Windows 10/11 PC, laptop, or mini-PC without an NVIDIA GPU |
+| **Linux (x86_64)** | `filament-vision-server-0.2.4-linux.tar.gz` | ~316 MB | CPU ONNX tier + GPU VLM LoRA adapter | Linux desktops/servers with an NVIDIA CUDA GPU (`>= 8 GB` VRAM) |
+| **Linux (x86_64, CPU-Only)** | `filament-vision-server-0.2.4-linux-cpu.tar.gz` | ~146 MB | CPU ONNX tier only | Headless servers, containers, WSL, or PCs without a discrete GPU |
 
 > [!TIP]
 > **Which tier should you pick?**
@@ -62,8 +62,8 @@ What the Windows installer handles for you automatically:
 
 1. Extract the `.tar.gz` archive and enter the extracted directory:
    ```bash
-   tar -xzf filament-vision-server-0.2.3-linux-cpu.tar.gz
-   cd filament-vision-server-0.2.3-linux-cpu
+   tar -xzf filament-vision-server-0.2.4-linux-cpu.tar.gz
+   cd filament-vision-server-0.2.4-linux-cpu
    ```
    *(Replace `-linux-cpu` with `-linux` if you downloaded the Full bundle.)*
 
@@ -105,8 +105,8 @@ What `install/install.sh` handles automatically:
 
 ## 3. Scan & Recognize Spools in the Web UI
 
-1. Open **`http://127.0.0.1:7920/`** in any browser (or `http://<your-server-ip>:7920/` from your phone when bound to `0.0.0.0`).
-2. Confirm the top-right status pill turns green (`OK v0.2.3 (CPU mode)` or `OK v0.2.3 (GPU ready)`).
+1. Open **`http://127.0.0.1:7920/`** in any browser (or `http://<your-server-ip>:7920/` from your phone when bound to `0.0.0.0` — same-origin LAN Web UI requests matching the `Host` header are permitted automatically, or set `FILAMENT_VISION_SERVER_ALLOWED_ORIGINS` for external web origins).
+2. Confirm the top-right status pill turns green (`OK v0.2.4 (CPU mode)` or `OK v0.2.4 (GPU ready)`).
 3. Under **1. Spool / Box Photo**:
    - Drag and drop up to **8 photos**, click **Choose Files**, or tap **Take Photo** on a phone/tablet.
    - Supported formats: `.JPG`, `.JPEG`, `.PNG`, `.WEBP`, `.HEIC`, `.HEIF` (native iPhone/Android HEIC photos work directly without converting first).

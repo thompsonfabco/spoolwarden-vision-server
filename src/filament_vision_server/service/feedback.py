@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import binascii
 import datetime
+import http.client
 import io
 import ipaddress
 import json
@@ -30,7 +31,7 @@ except ImportError:
     pass
 
 from ..cpu_tier.pipeline import _validate_image_dimensions
-from ..xml_io import DATA_DIR, AnnotatedSample, FilamentItem, parse_xml_file, write_xml_atomic
+from ..xml_io import DATA_DIR, PROJECT_ROOT, AnnotatedSample, FilamentItem, parse_xml_file, write_xml_atomic
 
 MAX_FEEDBACK_PHOTOS = 8
 MAX_FEEDBACK_IMAGE_SIDE = 1024
@@ -87,6 +88,8 @@ def _strip_data_uri(b64_str: str) -> bytes:
 def _assert_public_ip(ip_str: str, label: str) -> None:
     """Reject private, loopback, link-local, multicast, reserved, or non-global IP targets."""
     ip = ipaddress.ip_address(ip_str.split("%")[0])
+    if getattr(ip, "ipv4_mapped", None) is not None:
+        ip = ip.ipv4_mapped
     if (
         ip.is_private
         or ip.is_loopback
@@ -102,6 +105,7 @@ def _assert_public_ip(ip_str: str, label: str) -> None:
 def _validate_upload_url(
     url: str,
     *,
+    allow_loopback: bool = True,
     allow_loopback_http: bool = True,
     resolve_dns: bool = False,
 ) -> tuple[str, str]:
@@ -114,7 +118,7 @@ def _validate_upload_url(
         raise ValueError("A valid HTTPS feedback upload endpoint must be configured")
 
     if host in {"127.0.0.1", "localhost", "::1"}:
-        if scheme == "https" or (allow_loopback_http and scheme == "http"):
+        if allow_loopback and (scheme == "https" or (allow_loopback_http and scheme == "http")):
             return s, scheme
         raise ValueError("A valid HTTPS feedback upload endpoint must be configured")
 
@@ -143,13 +147,96 @@ def _validate_upload_url(
 class _SafeUploadRedirectHandler(urllib.request.HTTPRedirectHandler):
     """Ensure HTTP redirects during feedback upload cannot downgrade or SSRF off-policy hosts."""
 
-    def __init__(self, initial_scheme: str) -> None:
+    def __init__(self, initial_scheme: str, initial_url: str = "") -> None:
         super().__init__()
         self._allow_loopback_http = initial_scheme == "http"
+        if initial_url:
+            init_host = (urlparse(initial_url).hostname or "").lower().strip("[]")
+            self._allow_loopback = init_host in {"127.0.0.1", "localhost", "::1"}
+        else:
+            self._allow_loopback = self._allow_loopback_http
 
     def redirect_request(self, req: Any, fp: Any, code: int, msg: str, headers: Any, newurl: str) -> Any:
-        _validate_upload_url(newurl, allow_loopback_http=self._allow_loopback_http, resolve_dns=True)
+        _validate_upload_url(
+            newurl,
+            allow_loopback=self._allow_loopback,
+            allow_loopback_http=self._allow_loopback_http,
+            resolve_dns=True,
+        )
         return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _validate_connected_socket(sock: Any, host: str, *, allow_loopback: bool) -> None:
+    """Verify the connected peer IP against public-IP / loopback policy before sending HTTP payload."""
+    if sock is None:
+        return
+    try:
+        peer = sock.getpeername()
+        peer_ip = str(peer[0]).split("%")[0]
+        ip_obj = ipaddress.ip_address(peer_ip)
+        if getattr(ip_obj, "ipv4_mapped", None) is not None:
+            ip_obj = ip_obj.ipv4_mapped
+        if ip_obj.is_loopback and allow_loopback:
+            return
+        _assert_public_ip(peer_ip, host)
+    except Exception:
+        try:
+            sock.close()
+        except OSError:
+            pass
+        raise
+
+
+class _SafeHTTPConnection(http.client.HTTPConnection):
+    """HTTPConnection that validates the resolved peer IP on connect()."""
+
+    def __init__(self, host: str, *args: Any, allow_loopback: bool = False, **kwargs: Any) -> None:
+        super().__init__(host, *args, **kwargs)
+        self._allow_loopback = allow_loopback
+
+    def connect(self) -> None:
+        super().connect()
+        _validate_connected_socket(self.sock, self.host, allow_loopback=self._allow_loopback)
+
+
+class _SafeHTTPSConnection(http.client.HTTPSConnection):
+    """HTTPSConnection that validates the resolved peer IP on connect()."""
+
+    def __init__(self, host: str, *args: Any, allow_loopback: bool = False, **kwargs: Any) -> None:
+        super().__init__(host, *args, **kwargs)
+        self._allow_loopback = allow_loopback
+
+    def connect(self) -> None:
+        super().connect()
+        _validate_connected_socket(self.sock, self.host, allow_loopback=self._allow_loopback)
+
+
+class _SafeHTTPHandler(urllib.request.HTTPHandler):
+    def __init__(self, allow_loopback: bool = False) -> None:
+        super().__init__()
+        self._allow_loopback = allow_loopback
+
+    def http_open(self, req: Any) -> Any:
+        return self.do_open(
+            lambda *a, **kw: _SafeHTTPConnection(*a, allow_loopback=self._allow_loopback, **kw),
+            req,
+        )
+
+
+class _SafeHTTPSHandler(urllib.request.HTTPSHandler):
+    def __init__(self, allow_loopback: bool = False) -> None:
+        super().__init__()
+        self._allow_loopback = allow_loopback
+
+    def https_open(self, req: Any) -> Any:
+        extra: dict[str, Any] = {}
+        if getattr(self, "_context", None) is not None:
+            extra["context"] = self._context
+        return self.do_open(
+            lambda *a, **kw: _SafeHTTPSConnection(*a, allow_loopback=self._allow_loopback, **kw),
+            req,
+            **extra,
+        )
 
 
 def _safe_int(value: Any, default: int) -> int:
@@ -244,6 +331,7 @@ class FeedbackQueue:
         self.queue_dir = Path(queue_dir)
         self.xml_path = self.queue_dir / "pending_feedback.xml"
         self._lock = threading.RLock()
+        self._submit_lock = threading.Lock()
 
     def _load_root(self) -> StdET.Element:
         if self.xml_path.is_file():
@@ -554,13 +642,21 @@ class FeedbackQueue:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        opener = urllib.request.build_opener(_SafeUploadRedirectHandler(initial_scheme))
+        redirect_handler = _SafeUploadRedirectHandler(initial_scheme, clean_url)
+        opener = urllib.request.build_opener(
+            _SafeHTTPHandler(allow_loopback=redirect_handler._allow_loopback),
+            _SafeHTTPSHandler(allow_loopback=redirect_handler._allow_loopback),
+            redirect_handler,
+        )
+        max_resp_bytes = 1024 * 1024
         try:
             with opener.open(req, timeout=timeout) as resp:
-                resp_body = resp.read().decode("utf-8", errors="replace")
+                resp_body = resp.read(max_resp_bytes).decode("utf-8", errors="replace")
                 status_code = resp.status
         except urllib.error.HTTPError as exc:
-            raise RuntimeError(f"Upload failed with HTTP {exc.code}: {exc.read().decode('utf-8', errors='replace')}") from exc
+            raise RuntimeError(
+                f"Upload failed with HTTP {exc.code}: {exc.read(max_resp_bytes).decode('utf-8', errors='replace')}"
+            ) from exc
         except urllib.error.URLError as exc:
             raise RuntimeError(f"Upload failed: {exc.reason}") from exc
 
@@ -589,34 +685,36 @@ class FeedbackQueue:
         """Upload queued feedback entries in <= max_zip_bytes ZIP batches, pruning each uploaded batch."""
         url, _ = _validate_upload_url(endpoint_url)
 
-        batches = self.build_bundle_batches(max_zip_bytes=max_zip_bytes)
-        total_batches = len(batches)
-        stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        with self._submit_lock:
+            batches = self.build_bundle_batches(max_zip_bytes=max_zip_bytes)
+            total_batches = len(batches)
+            stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
-        total_submitted = 0
-        total_bytes = 0
-        responses: list[dict[str, Any]] = []
+            total_submitted = 0
+            total_bytes = 0
+            responses: list[dict[str, Any]] = []
 
-        for batch_idx, (entry_ids, zip_bytes) in enumerate(batches, start=1):
-            filename = (
-                f"filament-feedback-{stamp}.zip"
-                if total_batches == 1
-                else f"filament-feedback-{stamp}-part{batch_idx}of{total_batches}.zip"
-            )
-            parsed = self._post_zip_batch(
-                url=url,
-                filename=filename,
-                entry_count=len(entry_ids),
-                zip_bytes=zip_bytes,
-                timeout=timeout,
-            )
-            responses.append(parsed)
-            total_submitted += len(entry_ids)
-            total_bytes += len(zip_bytes)
-            self.delete_many(entry_ids)
+            for batch_idx, (entry_ids, zip_bytes) in enumerate(batches, start=1):
+                filename = (
+                    f"filament-feedback-{stamp}.zip"
+                    if total_batches == 1
+                    else f"filament-feedback-{stamp}-part{batch_idx}of{total_batches}.zip"
+                )
+                parsed = self._post_zip_batch(
+                    url=url,
+                    filename=filename,
+                    entry_count=len(entry_ids),
+                    zip_bytes=zip_bytes,
+                    timeout=timeout,
+                )
+                responses.append(parsed)
+                total_submitted += len(entry_ids)
+                total_bytes += len(zip_bytes)
+                self.delete_many(entry_ids)
 
-        if not self.status()["count"]:
-            self.clear()
+            with self._lock:
+                if not self.status()["count"]:
+                    self.clear()
 
         return {
             "ok": True,
@@ -674,12 +772,32 @@ def ingest_feedback_bundles(
 
     if dest_xml_path.is_file():
         out_root = parse_xml_file(dest_xml_path)
+        if out_root.tag == "dataset":
+            out_root.tag = "filament-dataset"
+        out_root.attrib.setdefault("version", "1")
+        out_root.attrib["split"] = out_root.attrib.get("split") or "feedback_verified"
+        for old_img_el in out_root.findall("./sample/image-path"):
+            if old_img_el.text and old_img_el.text.strip().startswith("feedback_verified/"):
+                old_img_el.text = "data/" + old_img_el.text.strip()
     else:
-        out_root = StdET.Element("dataset", attrib={"version": "1", "source": "user_feedback"})
+        out_root = StdET.Element(
+            "filament-dataset",
+            attrib={
+                "version": "1",
+                "split": "feedback_verified",
+                "count": "0",
+                "source": "user_feedback",
+            },
+        )
 
     existing_ids = {s.attrib.get("id", "") for s in out_root.findall("sample")}
     imported_entries = 0
     imported_images = 0
+
+    from ..catalog.matcher import CatalogMatcher
+    from ..cpu_tier.color_lab import classify_rgb_to_family
+
+    matcher = CatalogMatcher()
 
     ocr_engine: Any = None
     cv2_mod: Any = None
@@ -731,15 +849,22 @@ def ingest_feedback_bundles(
                     if out_img.exists():
                         out_img = dest_img_root / f"{out_img.stem}_{uuid.uuid4().hex[:6]}{out_img.suffix}"
                     out_img.write_bytes(img_bytes)
-                    dest_parents = dest_xml_path.resolve().parents
-                    base_dir = dest_parents[1] if len(dest_parents) >= 2 else DATA_DIR.parent
+                    dest_resolved = dest_xml_path.resolve()
+                    dest_parents = dest_resolved.parents
+                    proj_resolved = PROJECT_ROOT.resolve()
                     out_img_res = out_img.resolve()
-                    if out_img_res.is_relative_to(base_dir):
-                        rel_or_abs = out_img_res.relative_to(base_dir)
-                    elif out_img.is_relative_to(DATA_DIR.parent):
-                        rel_or_abs = out_img.relative_to(DATA_DIR.parent)
+                    if out_img_res.is_relative_to(proj_resolved):
+                        rel_or_abs = out_img_res.relative_to(proj_resolved)
+                    elif (
+                        dest_resolved.parent.name == "annotations"
+                        and len(dest_parents) >= 3
+                        and out_img_res.is_relative_to(dest_parents[2])
+                    ):
+                        rel_or_abs = out_img_res.relative_to(dest_parents[2])
+                    elif out_img_res.is_relative_to(dest_resolved.parent):
+                        rel_or_abs = out_img_res.relative_to(dest_resolved.parent)
                     else:
-                        rel_or_abs = out_img
+                        rel_or_abs = out_img_res
 
                     ocr_lines: list[str] = []
                     boxes: list[Any] = []
@@ -755,23 +880,54 @@ def ingest_feedback_bundles(
                 if not saved_paths:
                     continue
 
+                raw_hex = str(corr.get("color_hex") or "").strip().lstrip("#").upper()
+                explicit_hex = raw_hex[:6] if re.fullmatch(r"[0-9A-F]{6}", raw_hex[:6] if len(raw_hex) >= 6 else "") else ""
+                explicit_family = str(corr.get("color_family") or "").strip()
+                inferred_family = explicit_family
+                if explicit_hex and not inferred_family:
+                    r, g, b = int(explicit_hex[0:2], 16), int(explicit_hex[2:4], 16), int(explicit_hex[4:6], 16)
+                    inferred_family = classify_rgb_to_family(r, g, b)
+
+                explicit_nozzle_range = str(corr.get("nozzle_range") or "").strip() or None
+                explicit_bed_range = str(corr.get("bed_range") or "").strip() or None
+                explicit_nozzle = _safe_int(corr.get("nozzle"), -1)
+                explicit_bed = _safe_int(corr.get("bed"), -1)
+
                 item = FilamentItem(
                     vendor=str(corr.get("vendor") or "Unknown"),
                     material=str(corr.get("material") or "PLA"),
                     line=str(corr.get("line") or ""),
                     color_name=str(corr.get("color_name") or ""),
-                    color_family=str(corr.get("color_family") or ""),
-                    color_hex=str(corr.get("color_hex") or ""),
+                    color_family=inferred_family,
+                    color_hex=explicit_hex,
+                    color_hex_source="catalog" if explicit_hex else "estimate",
                     net_grams=_safe_int(corr.get("net_grams", corr.get("net")), 1000),
-                    tare_grams=_safe_int(corr.get("tare_grams", corr.get("tare")), 170),
-                    density=_safe_float(corr.get("density"), 1.24),
+                    tare_grams=_safe_int(corr.get("tare_grams", corr.get("tare")), 0),
+                    density=_safe_float(corr.get("density"), 0.0),
                     diameter=_safe_float(corr.get("diameter"), 1.75),
-                    nozzle=_safe_int(corr.get("nozzle"), 210),
-                    bed=_safe_int(corr.get("bed"), 60),
-                    nozzle_range=str(corr.get("nozzle_range") or "190-220"),
-                    bed_range=str(corr.get("bed_range") or "50-60"),
+                    nozzle=explicit_nozzle if explicit_nozzle > 0 else None,
+                    bed=explicit_bed if explicit_bed > 0 else None,
+                    nozzle_range=explicit_nozzle_range,
+                    bed_range=explicit_bed_range,
                     sealed=bool(corr.get("sealed", False)),
                 )
+                matcher.enrich_item(item)
+                if explicit_hex:
+                    item.color_hex = explicit_hex
+                    item.color_hex_source = "catalog"
+                    if explicit_family:
+                        item.color_family = explicit_family
+                    elif inferred_family:
+                        item.color_family = inferred_family
+                    item.estimates = [e for e in item.estimates if e != "color_hex"]
+                if explicit_nozzle_range:
+                    item.nozzle_range = explicit_nozzle_range
+                if explicit_bed_range:
+                    item.bed_range = explicit_bed_range
+                if explicit_nozzle > 0:
+                    item.nozzle = explicit_nozzle
+                if explicit_bed > 0:
+                    item.bed = explicit_bed
                 synth_ocr = f"{item.vendor} {item.line} {item.material} {item.color_name}".strip()
                 for idx_p, (spath, w, h, ocr_lines, boxes) in enumerate(saved_paths):
                     sid = eid if idx_p == 0 else f"{eid}_{idx_p}"
@@ -794,6 +950,7 @@ def ingest_feedback_bundles(
                     existing_ids.add(sid)
                 imported_entries += 1
 
+    out_root.attrib["count"] = str(len(out_root.findall("sample")))
     write_xml_atomic(dest_xml_path, out_root)
     return {
         "zips_processed": len(zips),

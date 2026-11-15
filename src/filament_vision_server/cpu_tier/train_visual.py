@@ -1,6 +1,7 @@
 """Multi-head visual attribute classifier (MobileNetV3-Large) trained on GPU and exported to ONNX for CPU inference."""
 from __future__ import annotations
 
+import logging
 import random
 import xml.etree.ElementTree as StdET
 from pathlib import Path
@@ -13,8 +14,10 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset
 
-from ..xml_io import DATA_DIR, PROJECT_ROOT, AnnotatedSample, load_dataset_xml, load_training_samples_with_feedback, parse_xml_file, write_xml_atomic
+from ..xml_io import CONFIGS_DIR, DATA_DIR, PROJECT_ROOT, AnnotatedSample, load_dataset_xml, load_training_samples_with_feedback, parse_xml_file, write_xml_atomic
 from .labels import COLOR_FAMILIES, SEALED_STATES, VISUAL_FINISHES, VISUAL_VENDORS
+
+log = logging.getLogger(__name__)
 
 
 class MultiHeadFilamentNet(nn.Module):
@@ -48,7 +51,19 @@ class MultiHeadFilamentNet(nn.Module):
 
 class VisualAttributeDataset(Dataset):
     def __init__(self, samples: list[AnnotatedSample], augment: bool = False):
-        self.samples = samples
+        valid_samples: list[AnnotatedSample] = []
+        skipped = 0
+        for s in samples:
+            img_path = PROJECT_ROOT / s.image_path
+            if img_path.is_file() and cv2.imread(str(img_path)) is not None:
+                valid_samples.append(s)
+            else:
+                skipped += 1
+        if skipped:
+            log.warning("Skipped %d visual training samples with missing or unreadable images", skipped)
+        if not valid_samples:
+            raise ValueError("No valid visual training samples with readable images found")
+        self.samples = valid_samples
         self.augment = augment
         self.color_to_idx = {c: i for i, c in enumerate(COLOR_FAMILIES)}
         self.finish_to_idx = {f: i for i, f in enumerate(VISUAL_FINISHES)}
@@ -62,18 +77,17 @@ class VisualAttributeDataset(Dataset):
         img_path = PROJECT_ROOT / s.image_path
         img_bgr = cv2.imread(str(img_path))
         if img_bgr is None:
-            img_bgr = np.zeros((224, 224, 3), dtype=np.uint8)
-        else:
-            if self.augment and s.boxes and random.random() < 0.40:
-                b = random.choice(s.boxes)
-                ih, iw = img_bgr.shape[:2]
-                px1 = max(0, int((b.x1 - 0.05) * iw))
-                py1 = max(0, int((b.y1 - 0.05) * ih))
-                px2 = min(iw, int((b.x2 + 0.05) * iw))
-                py2 = min(ih, int((b.y2 + 0.05) * ih))
-                if (px2 - px1) >= 48 and (py2 - py1) >= 48:
-                    img_bgr = img_bgr[py1:py2, px1:px2]
-            img_bgr = cv2.resize(img_bgr, (224, 224), interpolation=cv2.INTER_AREA)
+            raise RuntimeError(f"Unreadable image during training: {img_path}")
+        if self.augment and s.boxes and random.random() < 0.40:
+            b = random.choice(s.boxes)
+            ih, iw = img_bgr.shape[:2]
+            px1 = max(0, int((b.x1 - 0.05) * iw))
+            py1 = max(0, int((b.y1 - 0.05) * ih))
+            px2 = min(iw, int((b.x2 + 0.05) * iw))
+            py2 = min(ih, int((b.y2 + 0.05) * ih))
+            if (px2 - px1) >= 48 and (py2 - py1) >= 48:
+                img_bgr = img_bgr[py1:py2, px1:px2]
+        img_bgr = cv2.resize(img_bgr, (224, 224), interpolation=cv2.INTER_AREA)
 
         if self.augment:
             if random.random() < 0.5:
@@ -114,29 +128,56 @@ def train_and_export_visual_classifier(
     train_xml: str | Path = DATA_DIR / "annotations" / "train_split.xml",
     val_xml: str | Path = DATA_DIR / "annotations" / "val_split.xml",
     output_onnx: str | Path = PROJECT_ROOT / "models" / "cpu" / "visual_multihead.onnx",
-    epochs: int = 18,
-    batch_size: int = 32,
-    lr: float = 1.2e-3,
+    epochs: int | None = None,
+    batch_size: int | None = None,
+    lr: float | None = None,
 ) -> dict[str, Any]:
     """Train MultiHeadFilamentNet on GPU and export to ONNX + XML metadata."""
+    cfg_epochs, cfg_batch, cfg_lr, cfg_wd = 35, 32, 1e-3, 1e-4
+    head_weights = {"color_family": 1.0, "visual_finish": 0.8, "visual_vendor": 1.2, "sealed_state": 0.6}
+    cfg_path = CONFIGS_DIR / "cpu_pipeline.xml"
+    if cfg_path.is_file():
+        try:
+            cfg_root = parse_xml_file(cfg_path)
+            vc_el = cfg_root.find("visual-classifier")
+            if vc_el is not None:
+                tr_el = vc_el.find("training")
+                if tr_el is not None:
+                    cfg_epochs = int(tr_el.attrib.get("epochs", str(cfg_epochs)))
+                    cfg_batch = int(tr_el.attrib.get("batch-size", str(cfg_batch)))
+                    cfg_lr = float(tr_el.attrib.get("lr", str(cfg_lr)))
+                    cfg_wd = float(tr_el.attrib.get("weight-decay", str(cfg_wd)))
+                for h_el in vc_el.findall("./heads/head"):
+                    hname = h_el.attrib.get("name", "")
+                    if hname in head_weights and h_el.attrib.get("loss-weight"):
+                        head_weights[hname] = float(h_el.attrib["loss-weight"])
+        except Exception as exc:
+            log.warning("Failed to read visual training defaults from %s: %s", cfg_path, exc)
+
+    eff_epochs = cfg_epochs if epochs is None else int(epochs)
+    eff_batch = cfg_batch if batch_size is None else int(batch_size)
+    eff_lr = cfg_lr if lr is None else float(lr)
+
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     train_samples = load_training_samples_with_feedback(train_xml)
     val_samples = load_dataset_xml(val_xml)
 
-    train_loader = DataLoader(VisualAttributeDataset(train_samples, augment=True), batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(VisualAttributeDataset(val_samples, augment=False), batch_size=batch_size, shuffle=False)
+    train_loader = DataLoader(VisualAttributeDataset(train_samples, augment=True), batch_size=eff_batch, shuffle=True)
+    val_loader = DataLoader(VisualAttributeDataset(val_samples, augment=False), batch_size=eff_batch, shuffle=False)
 
     model = MultiHeadFilamentNet(pretrained=True).to(device)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=eff_lr, weight_decay=cfg_wd)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=eff_epochs)
     criterion = nn.CrossEntropyLoss()
 
     best_val_acc = 0.0
     out_path = Path(output_onnx)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    ckpt_path = out_path.with_suffix(".pt")
+    ckpt_dir = DATA_DIR / "training_runs"
+    ckpt_dir.mkdir(parents=True, exist_ok=True)
+    ckpt_path = ckpt_dir / f"{out_path.stem}_best.pt"
 
-    for epoch in range(1, epochs + 1):
+    for epoch in range(1, eff_epochs + 1):
         model.train()
         total_loss = 0.0
         for x, yc, yf, yv, ys in train_loader:
@@ -144,10 +185,10 @@ def train_and_export_visual_classifier(
             optimizer.zero_grad()
             pc, pf, pv, ps = model(x)
             loss = (
-                1.0 * criterion(pc, yc)
-                + 0.8 * criterion(pf, yf)
-                + 1.1 * criterion(pv, yv)
-                + 0.6 * criterion(ps, ys)
+                head_weights["color_family"] * criterion(pc, yc)
+                + head_weights["visual_finish"] * criterion(pf, yf)
+                + head_weights["visual_vendor"] * criterion(pv, yv)
+                + head_weights["sealed_state"] * criterion(ps, ys)
             )
             loss.backward()
             optimizer.step()
@@ -155,28 +196,31 @@ def train_and_export_visual_classifier(
         scheduler.step()
 
         model.eval()
-        correct_c, correct_f, correct_s, total = 0, 0, 0, 0
+        correct_c, correct_f, correct_v, correct_s, total = 0, 0, 0, 0, 0
         with torch.no_grad():
             for x, yc, yf, yv, ys in val_loader:
                 x, yc, yf, yv, ys = x.to(device), yc.to(device), yf.to(device), yv.to(device), ys.to(device)
                 pc, pf, pv, ps = model(x)
                 correct_c += int((pc.argmax(1) == yc).sum().item())
                 correct_f += int((pf.argmax(1) == yf).sum().item())
+                correct_v += int((pv.argmax(1) == yv).sum().item())
                 correct_s += int((ps.argmax(1) == ys).sum().item())
                 total += len(x)
 
         val_c_acc = correct_c / max(total, 1)
         val_f_acc = correct_f / max(total, 1)
+        val_v_acc = correct_v / max(total, 1)
         val_s_acc = correct_s / max(total, 1)
-        mean_acc = (val_c_acc + val_f_acc + val_s_acc) / 3.0
+        mean_acc = (val_c_acc + val_f_acc + val_v_acc + val_s_acc) / 4.0
         if mean_acc >= best_val_acc:
             best_val_acc = mean_acc
             torch.save(model.state_dict(), ckpt_path)
 
-        if epoch % 5 == 0 or epoch == epochs:
+        if epoch % 5 == 0 or epoch == eff_epochs:
             print(
-                f"[VisualClassifier] Epoch {epoch:02d}/{epochs} | "
-                f"ColorAcc={val_c_acc:.3f} FinishAcc={val_f_acc:.3f} SealedAcc={val_s_acc:.3f}"
+                f"[VisualClassifier] Epoch {epoch:02d}/{eff_epochs} | "
+                f"ColorAcc={val_c_acc:.3f} FinishAcc={val_f_acc:.3f} "
+                f"VendorAcc={val_v_acc:.3f} SealedAcc={val_s_acc:.3f}"
             )
 
     if ckpt_path.is_file():

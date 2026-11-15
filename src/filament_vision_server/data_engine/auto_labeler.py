@@ -178,7 +178,7 @@ def parse_ocr_heuristic(
             "kexcelled": "Kexcelled",
         }
         for kw, vcanon in domain_vendors.items():
-            if kw in low_text:
+            if re.search(rf"(?<!\w){re.escape(kw)}(?!\w)", low_text):
                 vendor = vcanon
                 break
 

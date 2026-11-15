@@ -10,6 +10,7 @@ import hmac
 import ipaddress
 import json
 import logging
+import math
 import os
 import re
 import socket
@@ -25,9 +26,8 @@ from urllib.parse import parse_qs, urlparse
 
 from PIL import UnidentifiedImageError
 
-from ..catalog.library_sync import OFFICIAL_COLOR_HEX_DB
 from ..catalog.matcher import CatalogMatcher
-from ..cpu_tier.pipeline import CPUHybridPipeline
+from ..cpu_tier.pipeline import CPUHybridPipeline, apply_note_to_item
 from ..gpu_tier.pipeline import GPUVLMPipeline
 from ..xml_io import (
     CONFIGS_DIR,
@@ -51,7 +51,7 @@ DEFAULT_FEEDBACK_ENDPOINT = (
     "AKfycbzfxi1uUckO6BXKNdTZi9R-BfQyLpSa8cTWyCTBL-o1MGXyL89V1qLS-88ouOPbcep1/exec"
 )
 
-MODULE_VERSION = "0.2.3"
+MODULE_VERSION = "0.2.4"
 API_VERSION = "1.1"
 MAX_PHOTOS = 8
 MAX_PHOTO_BYTES = 20 * 1024 * 1024  # 20 MB
@@ -68,20 +68,35 @@ class BusyError(Exception):
     pass
 
 
-_CONFIG_LOCK = threading.Lock()
+_CONFIG_LOCK = threading.RLock()
 
 
-def _is_trusted_origin(origin: str) -> bool:
+def _is_cpu_only_env() -> bool:
+    raw = (
+        os.environ.get("FILAMENT_VISION_SERVER_CPU_ONLY")
+        or os.environ.get("FILAMENT_KIT_VISION_CPU_ONLY")
+        or ""
+    )
+    return raw.strip().lower() in ("1", "true", "yes", "on")
+
+
+def _format_url_host(host: str) -> str:
+    h = (host or "").strip()
+    if ":" in h and not h.startswith("["):
+        return f"[{h}]"
+    return h
+
+
+def _is_trusted_origin(origin: str, host_header: str = "") -> bool:
     o = (origin or "").strip()
     if not o:
         return True
     parsed = urlparse(o)
-    if parsed.scheme in ("http", "https") and (parsed.hostname or "").lower() in {
-        "127.0.0.1",
-        "localhost",
-        "::1",
-    }:
-        return True
+    if parsed.scheme in ("http", "https"):
+        if (parsed.hostname or "").lower() in {"127.0.0.1", "localhost", "::1"}:
+            return True
+        if host_header and parsed.netloc.lower() == host_header.strip().lower():
+            return True
     allowed_env = os.environ.get("FILAMENT_VISION_SERVER_ALLOWED_ORIGINS", "")
     if allowed_env:
         allowed_set = {a.strip().rstrip("/").lower() for a in allowed_env.split(",") if a.strip()}
@@ -104,56 +119,93 @@ def _is_loopback_client(client_ip: str) -> bool:
         return raw.lower() in {"127.0.0.1", "localhost", "::1"}
 
 
-def load_service_config(path: str | Path | None = None) -> dict[str, Any]:
+def load_service_config(path: str | Path | None = None, include_env: bool = True) -> dict[str, Any]:
     p = Path(DEFAULT_SERVICE_CONFIG_XML if path is None else path)
-    env_endpoint = (
-        os.environ.get("FILAMENT_VISION_SERVER_FEEDBACK_ENDPOINT")
-        or os.environ.get("FILAMENT_KIT_VISION_FEEDBACK_ENDPOINT")
-        or ""
-    ).strip()
+    if include_env:
+        env_endpoint = (
+            os.environ.get("FILAMENT_VISION_SERVER_FEEDBACK_ENDPOINT")
+            or os.environ.get("FILAMENT_KIT_VISION_FEEDBACK_ENDPOINT")
+            or ""
+        ).strip()
+        env_token = (
+            os.environ.get("FILAMENT_VISION_SERVER_TOKEN")
+            or os.environ.get("FILAMENT_KIT_VISION_TOKEN")
+            or ""
+        ).strip()
+        env_host = os.environ.get("FILAMENT_VISION_SERVER_HOST", "").strip()
+        env_port_raw = os.environ.get("FILAMENT_VISION_SERVER_PORT", "").strip()
+        env_tier = os.environ.get("FILAMENT_VISION_SERVER_TIER", "").strip().lower()
+    else:
+        env_endpoint = ""
+        env_token = ""
+        env_host = ""
+        env_port_raw = ""
+        env_tier = ""
+
     default_endpoint = env_endpoint or DEFAULT_FEEDBACK_ENDPOINT
-    env_token = (
-        os.environ.get("FILAMENT_VISION_SERVER_TOKEN")
-        or os.environ.get("FILAMENT_KIT_VISION_TOKEN")
-        or ""
-    ).strip()
+
+    def _apply_env_overrides(cfg: dict[str, Any]) -> dict[str, Any]:
+        if env_host:
+            cfg["host"] = env_host
+        if env_port_raw:
+            try:
+                cfg["port"] = int(env_port_raw)
+            except ValueError:
+                log.warning("Ignoring invalid FILAMENT_VISION_SERVER_PORT=%r", env_port_raw)
+        if env_tier in ("auto", "cpu", "gpu"):
+            cfg["tier"] = env_tier
+        return cfg
+
     with _CONFIG_LOCK:
         if not p.is_file():
-            return {
-                "tier": "auto",
-                "host": DEFAULT_HOST,
-                "port": DEFAULT_PORT,
-                "idle_unload_seconds": 300,
-                "token": env_token,
-                "feedback_opt_in": False,
-                "feedback_endpoint": default_endpoint,
-            }
+            return _apply_env_overrides(
+                {
+                    "tier": "auto",
+                    "host": DEFAULT_HOST,
+                    "port": DEFAULT_PORT,
+                    "idle_unload_seconds": 300,
+                    "token": env_token,
+                    "feedback_opt_in": False,
+                    "feedback_endpoint": default_endpoint,
+                }
+            )
         try:
             root = parse_xml_file(p)
-            return {
-                "tier": root.attrib.get("tier", "auto"),
-                "host": root.attrib.get("host", DEFAULT_HOST),
-                "port": int(root.attrib.get("port", str(DEFAULT_PORT))),
-                "idle_unload_seconds": int(root.attrib.get("idle-unload-seconds", "300")),
-                "token": env_token or root.attrib.get("token", ""),
-                "feedback_opt_in": root.attrib.get("feedback-opt-in", "false").lower() == "true",
-                "feedback_endpoint": env_endpoint or root.attrib.get("feedback-endpoint") or default_endpoint,
-            }
+            if env_endpoint:
+                ep_val = env_endpoint
+            elif "feedback-endpoint" in root.attrib:
+                ep_val = root.attrib["feedback-endpoint"].strip()
+            else:
+                ep_val = default_endpoint
+            return _apply_env_overrides(
+                {
+                    "tier": root.attrib.get("tier", "auto"),
+                    "host": root.attrib.get("host", DEFAULT_HOST),
+                    "port": int(root.attrib.get("port", str(DEFAULT_PORT))),
+                    "idle_unload_seconds": int(root.attrib.get("idle-unload-seconds", "300")),
+                    "token": env_token or root.attrib.get("token", ""),
+                    "feedback_opt_in": root.attrib.get("feedback-opt-in", "false").lower() == "true",
+                    "feedback_endpoint": ep_val,
+                }
+            )
         except Exception as exc:
             log.warning("Failed to load %s, using defaults: %s", p, exc)
-            return {
-                "tier": "auto",
-                "host": DEFAULT_HOST,
-                "port": DEFAULT_PORT,
-                "idle_unload_seconds": 300,
-                "token": env_token,
-                "feedback_opt_in": False,
-                "feedback_endpoint": default_endpoint,
-            }
+            return _apply_env_overrides(
+                {
+                    "tier": "auto",
+                    "host": DEFAULT_HOST,
+                    "port": DEFAULT_PORT,
+                    "idle_unload_seconds": 300,
+                    "token": env_token,
+                    "feedback_opt_in": False,
+                    "feedback_endpoint": default_endpoint,
+                }
+            )
 
 
 def save_service_config(cfg: dict[str, Any], path: str | Path | None = None) -> Path:
     target = Path(DEFAULT_SERVICE_CONFIG_XML if path is None else path)
+    ep = str(cfg.get("feedback_endpoint") or "").strip()
     attrs = {
         "version": "1",
         "tier": str(cfg.get("tier", "auto")),
@@ -161,15 +213,19 @@ def save_service_config(cfg: dict[str, Any], path: str | Path | None = None) -> 
         "port": str(cfg.get("port", DEFAULT_PORT)),
         "idle-unload-seconds": str(cfg.get("idle_unload_seconds", 300)),
         "feedback-opt-in": "true" if cfg.get("feedback_opt_in") else "false",
+        "feedback-endpoint": ep,
     }
     if cfg.get("token"):
         attrs["token"] = str(cfg["token"])
-    ep = str(cfg.get("feedback_endpoint") or "").strip()
-    if ep and ep != DEFAULT_FEEDBACK_ENDPOINT:
-        attrs["feedback-endpoint"] = ep
     root = StdET.Element("service-config", attrib=attrs)
     with _CONFIG_LOCK:
-        return write_xml_atomic(target, root)
+        written = write_xml_atomic(target, root)
+        if cfg.get("token") and os.name != "nt":
+            try:
+                os.chmod(written, 0o600)
+            except OSError:
+                pass
+        return written
 
 
 class FilamentRecognizer:
@@ -197,9 +253,12 @@ class FilamentRecognizer:
         self.started_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
         self.last_read_at: str | None = None
         self._lock = threading.Lock()
+        self._gpu_init_lock = threading.Lock()
         self._active_reads = 0
 
     def gpu_available(self) -> bool:
+        if _is_cpu_only_env():
+            return False
         if self._gpu_available is None:
             try:
                 import torch
@@ -210,19 +269,39 @@ class FilamentRecognizer:
         return self._gpu_available
 
     def gpu_loaded(self) -> bool:
-        if self._gpu_pipeline is None:
-            return False
-        with self._gpu_pipeline._lock:
-            return self._gpu_pipeline._model is not None
+        pipe = self._gpu_pipeline
+        return bool(pipe is not None and getattr(pipe, "_model", None) is not None)
 
     def _get_gpu_pipeline(self) -> GPUVLMPipeline:
-        if self._gpu_pipeline is None:
-            self._gpu_pipeline = GPUVLMPipeline(
-                idle_unload_seconds=self.idle_unload_seconds,
-                cpu_helper=self.cpu_pipeline,
-                matcher=self.matcher,
-            )
-        return self._gpu_pipeline
+        pipe = self._gpu_pipeline
+        if pipe is None:
+            with self._gpu_init_lock:
+                pipe = self._gpu_pipeline
+                if pipe is None:
+                    pipe = GPUVLMPipeline(
+                        idle_unload_seconds=self.idle_unload_seconds,
+                        cpu_helper=self.cpu_pipeline,
+                        matcher=self.matcher,
+                    )
+                    self._gpu_pipeline = pipe
+        return pipe
+
+    def _apply_hint_to_result(self, res: IntakeReadResult, hint: str) -> None:
+        hint_clean = (hint or "").strip()
+        if not hint_clean:
+            return
+        for it in res.items:
+            was_unknown = it.vendor == "Unknown"
+            self._apply_note_to_item(it, hint_clean)
+            if was_unknown and it.vendor != "Unknown":
+                it.confidence = max(it.confidence, 0.85)
+        non_brand_q = [q for q in res.questions if "confirm filament brand" not in q.lower()]
+        brand_q = [
+            f"Photo {it.photos[0] if it.photos else 0}: Please confirm filament brand (detected {it.line} {it.color_name})."
+            for it in res.items
+            if it.vendor == "Unknown"
+        ]
+        res.questions = non_brand_q + brand_q
 
     def predict(
         self,
@@ -234,6 +313,8 @@ class FilamentRecognizer:
     ) -> tuple[IntakeReadResult, bool, str | None]:
         """Run prediction. Returns (IntakeReadResult, escalated: bool, fallback_reason: str | None)."""
         chosen = (tier or self.default_tier or "auto").lower()
+        if chosen not in ("auto", "cpu", "gpu"):
+            raise ValueError(f"Unsupported tier '{chosen}'; must be one of 'auto', 'cpu', 'gpu'")
         escalated = False
         fallback_reason: str | None = None
 
@@ -246,9 +327,11 @@ class FilamentRecognizer:
             if chosen == "gpu":
                 if not self.gpu_available():
                     raise TierUnavailableError("GPU tier was explicitly requested but no CUDA device is available")
-                res = self._get_gpu_pipeline().predict(images)
+                res = self._get_gpu_pipeline().predict(images, hint=hint)
+                self._apply_hint_to_result(res, hint)
             elif chosen == "auto":
                 res = self.cpu_pipeline.predict(images, hint=hint)
+                self._apply_hint_to_result(res, hint)
                 needs_escalation = any(
                     it.vendor == "Unknown" or it.confidence < 0.78 for it in res.items
                 )
@@ -261,7 +344,8 @@ class FilamentRecognizer:
                                 if prior_by_photo
                                 else None
                             )
-                            res = self._get_gpu_pipeline().predict(images, cpu_priors=priors)
+                            res = self._get_gpu_pipeline().predict(images, cpu_priors=priors, hint=hint)
+                            self._apply_hint_to_result(res, hint)
                             escalated = True
                         except Exception as exc:
                             log.warning("GPU escalation failed, keeping CPU result: %s", exc)
@@ -270,17 +354,7 @@ class FilamentRecognizer:
                         fallback_reason = "GPU unavailable for escalation"
             else:
                 res = self.cpu_pipeline.predict(images, hint=hint)
-
-            if hint.strip():
-                for it in res.items:
-                    self._apply_note_to_item(it, hint.strip())
-                non_brand_q = [q for q in res.questions if "confirm filament brand" not in q.lower()]
-                brand_q = [
-                    f"Photo {it.photos[0] if it.photos else 0}: Please confirm filament brand (detected {it.line} {it.color_name})."
-                    for it in res.items
-                    if it.vendor == "Unknown"
-                ]
-                res.questions = non_brand_q + brand_q
+                self._apply_hint_to_result(res, hint)
 
             # Match against live Spoolman catalog when provided
             self._match_spoolman_catalog(res.items, spoolman_filaments, spoolman_vendors)
@@ -313,7 +387,13 @@ class FilamentRecognizer:
             for f in spoolman_filaments:
                 if not isinstance(f, dict):
                     continue
-                f_vendor = ((f.get("vendor") or {}).get("name") or "").strip()
+                raw_v = f.get("vendor")
+                if isinstance(raw_v, dict):
+                    f_vendor = str(raw_v.get("name") or "").strip()
+                elif isinstance(raw_v, str):
+                    f_vendor = raw_v.strip()
+                else:
+                    f_vendor = ""
                 f_name = (f.get("name") or "").strip()
                 if (
                     f_vendor.lower() == it.vendor.lower()
@@ -324,9 +404,9 @@ class FilamentRecognizer:
                 ):
                     it.existing_filament_id = f.get("id")
                     it.vendor = f_vendor or it.vendor
-                    if f.get("spool_weight"):
+                    if f.get("spool_weight") is not None:
                         it.tare_grams = int(float(f["spool_weight"]))
-                    if f.get("density"):
+                    if f.get("density") is not None:
                         it.density = float(f["density"])
                     if f.get("color_hex"):
                         it.color_hex = str(f["color_hex"]).lstrip("#").upper()
@@ -334,113 +414,98 @@ class FilamentRecognizer:
 
     def _apply_note_to_item(self, item: FilamentItem, note_clean: str) -> None:
         """Apply explicit user hint/revision note fields onto item and re-enrich from catalog."""
-        if not note_clean:
-            return
-        for v_name in sorted(self.matcher.vendors.values(), key=len, reverse=True):
-            if re.search(rf"\b{re.escape(v_name)}\b", note_clean, re.IGNORECASE):
-                if v_name != item.vendor:
-                    item.vendor = v_name
-                    item.line = item.material
-                    item.nozzle_range = None
-                    item.bed_range = None
-                break
-
-        for mat_code in self.matcher._sorted_material_aliases:
-            if re.search(rf"\b{re.escape(mat_code)}(?:\b|(?=\+|\s|$)|(?!\w))", note_clean, re.IGNORECASE):
-                new_mat = self.matcher.material_aliases[mat_code]
-                if new_mat != item.material or new_mat.lower() not in (item.line or "").lower():
-                    item.material = new_mat
-                    item.line = new_mat
-                    item.nozzle_range = None
-                    item.bed_range = None
-                else:
-                    item.material = new_mat
-                break
-
-        for sub in ("PLA+", "Matte", "Silk", "Plus", "HF", "Pro", "Rapid", "High Speed", "Galaxy", "Marble", "Wood", "Glow", "Translucent", "Basic"):
-            if re.search(rf"\b{re.escape(sub)}(?:\b|(?=\+|\s|$)|(?!\w))", note_clean, re.IGNORECASE):
-                if sub in ("Plus", "PLA+"):
-                    new_line = f"{item.material}+" if item.material == "PLA" else f"{item.material} Plus"
-                else:
-                    new_line = f"{item.material} {sub}"
-                if new_line != item.line:
-                    item.line = new_line
-                    item.nozzle_range = None
-                    item.bed_range = None
-                break
-
-        # Match explicit color names mentioned in hint/note (product colors first, then official color DB)
-        prod = self.matcher.match_product_line(item.vendor, item.line, item.material)
-        color_candidates: list[str] = []
-        if prod and prod.colors:
-            color_candidates.extend(c.name.strip() for c in prod.colors if c.name and c.name.strip())
-        color_candidates.extend(k.strip() for k in OFFICIAL_COLOR_HEX_DB.keys() if k and k.strip())
-        seen_colors: set[str] = set()
-        unique_colors: list[str] = []
-        for cname in sorted(color_candidates, key=len, reverse=True):
-            cl = cname.lower()
-            if cl not in seen_colors and cl not in {"basic", "silk", "matte", "plus", "pro", "hf", "rapid"}:
-                seen_colors.add(cl)
-                unique_colors.append(cname)
-        for cname in unique_colors:
-            if re.search(rf"(?<!\w){re.escape(cname)}(?!\w)", note_clean, re.IGNORECASE):
-                item.color_name = cname
-                item.color_hex = None
-                item.color_hex_source = "catalog"
-                break
-
-        nl = note_clean.lower()
-        if any(w in nl for w in ("bare", "opened", "open spool", "unsealed")):
-            item.sealed = False
-            item.sealed_reason = "bare spool"
-        elif "in box" in nl or "boxed" in nl:
-            item.sealed = True
-            item.sealed_reason = "in box"
-        elif "vacuum" in nl or "bag" in nl or "sealed" in nl:
-            item.sealed = True
-            item.sealed_reason = "in vacuum bag"
-
-        self.matcher.enrich_item(item)
+        apply_note_to_item(item, note_clean, self.matcher)
 
     def revise(
         self,
         previous: dict[str, Any],
-        note: str,
+        note: str | None,
         spoolman_filaments: list[dict[str, Any]] | None = None,
         spoolman_vendors: list[dict[str, Any]] | None = None,
     ) -> IntakeReadResult:
         """Revise an intake item based on user notes and catalog constraints."""
-        def _coerce_int(val: Any, default: int) -> int:
-            return default if val is None or val == "" else int(float(val))
+        def _coerce_int(val: Any, default: int, field_name: str, min_val: int = 0) -> int:
+            if val is None or val == "":
+                return default
+            if isinstance(val, bool):
+                raise ValueError(f"previous.{field_name} must be an integer, got boolean")
+            try:
+                fval = float(val)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"previous.{field_name} must be numeric: {val!r}") from exc
+            if not math.isfinite(fval):
+                raise ValueError(f"previous.{field_name} must be finite: {val!r}")
+            ival = int(fval)
+            if ival < min_val:
+                raise ValueError(f"previous.{field_name} must be >= {min_val}, got {ival}")
+            return ival
 
-        def _coerce_float(val: Any, default: float) -> float:
-            return default if val is None or val == "" else float(val)
+        def _coerce_opt_int(val: Any, field_name: str, min_val: int = 0) -> int | None:
+            if val is None or val == "":
+                return None
+            return _coerce_int(val, 0, field_name, min_val=min_val)
+
+        def _coerce_float(val: Any, default: float, field_name: str, min_val: float = 0.0) -> float:
+            if val is None or val == "":
+                return default
+            if isinstance(val, bool):
+                raise ValueError(f"previous.{field_name} must be a number, got boolean")
+            try:
+                fval = float(val)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"previous.{field_name} must be numeric: {val!r}") from exc
+            if not math.isfinite(fval) or fval <= min_val:
+                raise ValueError(f"previous.{field_name} must be finite and > {min_val}, got {val!r}")
+            return fval
+
+        raw_photos = previous.get("photos")
+        if raw_photos is None:
+            photos_list = [0]
+        elif isinstance(raw_photos, list) and all(isinstance(p, int) and not isinstance(p, bool) for p in raw_photos):
+            photos_list = list(raw_photos) if raw_photos else [0]
+        else:
+            raise ValueError("previous.photos must be a list of integers")
+
+        if note is not None and not isinstance(note, str):
+            raise ValueError("note must be a string")
+        note_clean = (note or "").strip()
+
+        reader_extra = previous.get("reader_extra")
+        extra_dict = reader_extra if isinstance(reader_extra, dict) else {}
+        source_type = str(extra_dict.get("source_type") or previous.get("source_type") or "spool_label")
+        hex_source = str(
+            extra_dict.get("hex_source")
+            or previous.get("color_hex_source")
+            or ("catalog" if previous.get("color_hex") else "estimate")
+        )
 
         item = FilamentItem(
-            vendor=previous.get("vendor") or "Unknown",
-            material=previous.get("material") or "PLA",
-            line=previous.get("line") or previous.get("material") or "PLA",
-            color_name=previous.get("color_name") or "unknown",
-            color_family=previous.get("color_family") or "Black",
+            vendor=str(previous.get("vendor") or "Unknown"),
+            material=str(previous.get("material") or "PLA"),
+            line=str(previous.get("line") or previous.get("material") or "PLA"),
+            color_name=str(previous.get("color_name") or "unknown"),
+            color_family=str(previous.get("color_family") or "Black"),
             color_hex=previous.get("color_hex"),
-            net_grams=_coerce_int(previous.get("net"), 1000),
-            tare_grams=_coerce_int(previous.get("tare"), 200),
-            density=_coerce_float(previous.get("density"), 1.24),
-            count=_coerce_int(previous.get("count"), 1),
-            nozzle=previous.get("nozzle"),
-            bed=previous.get("bed"),
+            color_hex_source=hex_source,
+            net_grams=_coerce_int(previous.get("net"), 1000, "net", min_val=0),
+            tare_grams=_coerce_int(previous.get("tare"), 200, "tare", min_val=0),
+            density=_coerce_float(previous.get("density"), 1.24, "density", min_val=0.0),
+            diameter=_coerce_float(previous.get("diameter"), 1.75, "diameter", min_val=0.0),
+            count=_coerce_int(previous.get("count"), 1, "count", min_val=1),
+            nozzle=_coerce_opt_int(previous.get("nozzle"), "nozzle", min_val=1),
+            bed=_coerce_opt_int(previous.get("bed"), "bed", min_val=0),
             nozzle_range=previous.get("nozzle_range"),
             bed_range=previous.get("bed_range"),
             lot=previous.get("lot"),
             sealed=bool(previous.get("sealed", False)),
             sealed_reason=str(previous.get("sealed_reason") or "bare spool"),
             existing_filament_id=previous.get("existing_filament_id"),
+            source_type=source_type,
             confidence=0.95,
-            note=f"Revised by user note: '{note}'. Previously: {previous.get('vendor')} {previous.get('line')}",
-            photos=previous.get("photos") or [0],
+            note=f"Revised by user note: '{note_clean}'. Previously: {previous.get('vendor')} {previous.get('line')}",
+            photos=photos_list,
         )
 
-        note_clean = (note or "").strip()
         if note_clean:
             self._apply_note_to_item(item, note_clean)
 
@@ -473,7 +538,8 @@ class _DaemonRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(data)))
         origin = (self.headers.get("Origin") or "").strip() if self.headers else ""
-        if origin and _is_trusted_origin(origin):
+        host_header = (self.headers.get("Host") or "").strip() if self.headers else ""
+        if origin and _is_trusted_origin(origin, host_header):
             self.send_header("Access-Control-Allow-Origin", origin)
             self.send_header("Vary", "Origin")
             self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
@@ -487,7 +553,8 @@ class _DaemonRequestHandler(BaseHTTPRequestHandler):
 
     def _enforce_origin(self) -> bool:
         origin = (self.headers.get("Origin") or "").strip() if self.headers else ""
-        if origin and not _is_trusted_origin(origin):
+        host_header = (self.headers.get("Host") or "").strip() if self.headers else ""
+        if origin and not _is_trusted_origin(origin, host_header):
             self._send_error(403, "forbidden_origin", f"Untrusted Origin header: {origin}")
             return False
         return True
@@ -527,8 +594,24 @@ class _DaemonRequestHandler(BaseHTTPRequestHandler):
 
         if parsed.path in ("/v1/health", "/health"):
             gpu_ok = self.recognizer.gpu_available()
+            cpu_pipe = self.recognizer.cpu_pipeline
+            cpu_ok = bool(
+                cpu_pipe.detector_session is not None
+                or cpu_pipe.visual_session is not None
+                or cpu_pipe.ocr is not None
+            )
+            cpu_reason = "" if cpu_ok else "no CPU ONNX models or OCR engine loaded"
+            gpu_reason = (
+                ""
+                if gpu_ok
+                else (
+                    "disabled by FILAMENT_VISION_SERVER_CPU_ONLY"
+                    if _is_cpu_only_env()
+                    else "no CUDA device"
+                )
+            )
             default_tier = self.recognizer.default_tier
-            is_degraded = (default_tier == "gpu" and not gpu_ok)
+            is_degraded = (not cpu_ok) or (default_tier == "gpu" and not gpu_ok)
             status_str = "degraded" if is_degraded else "ok"
 
             payload = {
@@ -538,10 +621,10 @@ class _DaemonRequestHandler(BaseHTTPRequestHandler):
                 "status": status_str,
                 "default_tier": default_tier,
                 "tiers": {
-                    "cpu": {"usable": True, "reason": ""},
+                    "cpu": {"usable": cpu_ok, "reason": cpu_reason},
                     "gpu": {
                         "usable": gpu_ok,
-                        "reason": "" if gpu_ok else "no CUDA device",
+                        "reason": gpu_reason,
                         "loaded": self.recognizer.gpu_loaded(),
                     },
                 },
@@ -660,7 +743,16 @@ class _DaemonRequestHandler(BaseHTTPRequestHandler):
             self._send_error(411, "length_required", "Chunked Transfer-Encoding is not supported; provide Content-Length")
             return
 
-        raw_len = (self.headers.get("Content-Length") or "0").strip()
+        if "Content-Length" not in self.headers:
+            self._send_error(411, "length_required", "Content-Length header is required")
+            return
+
+        ctype = (self.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
+        if ctype != "application/json":
+            self._send_error(415, "unsupported_media_type", "Content-Type must be application/json")
+            return
+
+        raw_len = (self.headers.get("Content-Length") or "").strip()
         try:
             length = int(raw_len)
         except ValueError:
@@ -687,14 +779,13 @@ class _DaemonRequestHandler(BaseHTTPRequestHandler):
             return
 
         # Check API version
-        req_api_ver = str(body.get("api_version", "1.0"))
-        try:
-            major_ver = int(req_api_ver.split(".")[0])
-            if major_ver > 1:
-                self._send_error(400, "unsupported_api_version", f"Unsupported API major version: {req_api_ver}")
-                return
-        except ValueError:
-            self._send_error(400, "bad_request", f"Invalid api_version format: {req_api_ver}")
+        req_api_ver = body.get("api_version", "1.1")
+        if not isinstance(req_api_ver, str) or not re.fullmatch(r"\d+\.\d+", req_api_ver.strip()):
+            self._send_error(400, "bad_request", f"Invalid api_version format: {req_api_ver!r}")
+            return
+        major_ver = int(req_api_ver.strip().split(".", 1)[0])
+        if major_ver != 1:
+            self._send_error(400, "unsupported_api_version", f"Unsupported API major version: {req_api_ver}")
             return
 
         # Handle POST /v1/config
@@ -703,52 +794,80 @@ class _DaemonRequestHandler(BaseHTTPRequestHandler):
             if not _is_loopback_client(client_ip) and not self.recognizer.auth_token:
                 self._send_error(403, "forbidden_config", "Remote configuration changes require authentication")
                 return
-            if "feedback_endpoint" in body and body["feedback_endpoint"] is not None:
-                ep_cand = str(body["feedback_endpoint"]).strip()
-                if ep_cand and ep_cand != self.recognizer.feedback_endpoint:
-                    ep_host = (urlparse(ep_cand).hostname or "").lower().strip("[]")
-                    is_loopback = ep_host in {"127.0.0.1", "localhost", "::1"}
-                    if not is_loopback and ep_cand != DEFAULT_FEEDBACK_ENDPOINT and not self.recognizer.auth_token:
-                        self._send_error(
-                            403,
-                            "forbidden_endpoint",
-                            "Custom feedback endpoint update requires authentication or loopback target",
-                        )
+            with _CONFIG_LOCK:
+                if "feedback_endpoint" in body and body["feedback_endpoint"] is not None:
+                    if not isinstance(body["feedback_endpoint"], str):
+                        self._send_error(400, "bad_request", "feedback_endpoint must be a string")
+                        return
+                    ep_cand = body["feedback_endpoint"].strip()
+                    if ep_cand != self.recognizer.feedback_endpoint:
+                        ep_host = (urlparse(ep_cand).hostname or "").lower().strip("[]") if ep_cand else ""
+                        is_loopback = ep_host in {"127.0.0.1", "localhost", "::1"}
+                        if ep_cand:
+                            if not is_loopback and ep_cand != DEFAULT_FEEDBACK_ENDPOINT and not self.recognizer.auth_token:
+                                self._send_error(
+                                    403,
+                                    "forbidden_endpoint",
+                                    "Custom feedback endpoint update requires authentication or loopback target",
+                                )
+                                return
+                            try:
+                                _validate_upload_url(ep_cand)
+                            except ValueError as exc:
+                                self._send_error(400, "bad_request", str(exc))
+                                return
+                        elif not _is_loopback_client(client_ip) and not self.recognizer.auth_token:
+                            self._send_error(
+                                403,
+                                "forbidden_endpoint",
+                                "Clearing feedback endpoint requires authentication or loopback client",
+                            )
+                            return
+
+                cfg = load_service_config(include_env=False)
+                if "tier" in body and body["tier"] is not None:
+                    if not isinstance(body["tier"], str):
+                        self._send_error(400, "bad_request", f"Invalid tier: {body['tier']!r}")
+                        return
+                    tier_val = body["tier"].strip().lower()
+                    if tier_val not in ("auto", "cpu", "gpu"):
+                        self._send_error(400, "bad_request", f"Invalid tier: {body['tier']}")
+                        return
+                    cfg["tier"] = tier_val
+                if "idle_unload_seconds" in body and body["idle_unload_seconds"] is not None:
+                    raw_idle = body["idle_unload_seconds"]
+                    if isinstance(raw_idle, bool) or (isinstance(raw_idle, float) and not raw_idle.is_integer()):
+                        self._send_error(400, "bad_request", f"Invalid idle_unload_seconds: {raw_idle!r}")
                         return
                     try:
-                        _validate_upload_url(ep_cand)
-                    except ValueError as exc:
-                        self._send_error(400, "bad_request", str(exc))
+                        idle_sec = int(raw_idle)
+                        if idle_sec < 0:
+                            raise ValueError("must be >= 0")
+                    except Exception:
+                        self._send_error(400, "bad_request", f"Invalid idle_unload_seconds: {raw_idle!r}")
                         return
-            cfg = load_service_config()
-            if "tier" in body and body["tier"] is not None:
-                tier_val = str(body["tier"]).lower()
-                if tier_val not in ("auto", "cpu", "gpu"):
-                    self._send_error(400, "bad_request", f"Invalid tier: {body['tier']}")
-                    return
-                self.recognizer.default_tier = tier_val
-                cfg["tier"] = tier_val
-            if "idle_unload_seconds" in body and body["idle_unload_seconds"] is not None:
-                try:
-                    idle_sec = int(body["idle_unload_seconds"])
-                    if idle_sec < 0:
-                        raise ValueError("must be >= 0")
-                except Exception:
-                    self._send_error(400, "bad_request", f"Invalid idle_unload_seconds: {body['idle_unload_seconds']}")
-                    return
-                self.recognizer.idle_unload_seconds = float(idle_sec)
+                    cfg["idle_unload_seconds"] = idle_sec
+                if "feedback_opt_in" in body and body["feedback_opt_in"] is not None:
+                    raw_opt = body["feedback_opt_in"]
+                    if isinstance(raw_opt, bool):
+                        opt_in = raw_opt
+                    elif isinstance(raw_opt, str) and raw_opt.strip().lower() in ("true", "false"):
+                        opt_in = raw_opt.strip().lower() == "true"
+                    else:
+                        self._send_error(400, "bad_request", f"Invalid feedback_opt_in boolean: {raw_opt!r}")
+                        return
+                    cfg["feedback_opt_in"] = opt_in
+                if "feedback_endpoint" in body and body["feedback_endpoint"] is not None:
+                    cfg["feedback_endpoint"] = body["feedback_endpoint"].strip()
+
+                save_service_config(cfg)
+                self.recognizer.default_tier = cfg["tier"]
+                self.recognizer.idle_unload_seconds = float(cfg["idle_unload_seconds"])
                 if self.recognizer._gpu_pipeline is not None:
-                    self.recognizer._gpu_pipeline.idle_unload_seconds = float(idle_sec)
-                cfg["idle_unload_seconds"] = idle_sec
-            if "feedback_opt_in" in body and body["feedback_opt_in"] is not None:
-                opt_in = bool(body["feedback_opt_in"])
-                self.recognizer.feedback_opt_in = opt_in
-                cfg["feedback_opt_in"] = opt_in
-            if "feedback_endpoint" in body and body["feedback_endpoint"] is not None:
-                ep = str(body["feedback_endpoint"]).strip()
-                self.recognizer.feedback_endpoint = ep
-                cfg["feedback_endpoint"] = ep
-            save_service_config(cfg)
+                    self.recognizer._gpu_pipeline.idle_unload_seconds = float(cfg["idle_unload_seconds"])
+                self.recognizer.feedback_opt_in = bool(cfg["feedback_opt_in"])
+                self.recognizer.feedback_endpoint = str(cfg["feedback_endpoint"])
+
             self._send_json(
                 200,
                 {
@@ -790,12 +909,20 @@ class _DaemonRequestHandler(BaseHTTPRequestHandler):
 
         # Handle POST /v1/feedback/submit
         if parsed.path in ("/v1/feedback/submit", "/feedback/submit"):
+            client_ip = self.client_address[0] if self.client_address else ""
+            if not _is_loopback_client(client_ip) and not self.recognizer.auth_token:
+                self._send_error(403, "forbidden_submit", "Remote feedback submission requires authentication")
+                return
             if not self.recognizer.feedback_opt_in:
                 self._send_error(403, "feedback_disabled", "Training feedback opt-in is disabled")
                 return
-            custom_ep = str(body.get("endpoint") or "").strip()
+            raw_ep = body.get("endpoint")
+            if raw_ep is not None and not isinstance(raw_ep, str):
+                self._send_error(400, "bad_request", "endpoint must be a string")
+                return
+            custom_ep = (raw_ep or "").strip()
             if custom_ep and custom_ep != self.recognizer.feedback_endpoint:
-                ep_host = (urlparse(custom_ep).hostname or "").lower()
+                ep_host = (urlparse(custom_ep).hostname or "").lower().strip("[]")
                 is_loopback = ep_host in {"127.0.0.1", "localhost", "::1"}
                 if not is_loopback and not self.recognizer.auth_token:
                     self._send_error(
@@ -821,13 +948,25 @@ class _DaemonRequestHandler(BaseHTTPRequestHandler):
             if not isinstance(previous, dict):
                 self._send_error(400, "bad_request", "POST /v1/revise requires a 'previous' object")
                 return
-            note = str(body.get("note", ""))
+            raw_note = body.get("note")
+            if raw_note is not None and not isinstance(raw_note, str):
+                self._send_error(400, "bad_request", "note must be a string or null")
+                return
+            spoolman_filaments = body.get("filaments")
+            spoolman_vendors = body.get("vendors")
+            if spoolman_filaments is not None and not isinstance(spoolman_filaments, list):
+                self._send_error(400, "bad_request", "filaments must be an array or null")
+                return
+            if spoolman_vendors is not None and not isinstance(spoolman_vendors, list):
+                self._send_error(400, "bad_request", "vendors must be an array or null")
+                return
+            note = raw_note or ""
             try:
                 res = self.recognizer.revise(
                     previous=previous,
                     note=note,
-                    spoolman_filaments=body.get("filaments"),
-                    spoolman_vendors=body.get("vendors"),
+                    spoolman_filaments=spoolman_filaments,
+                    spoolman_vendors=spoolman_vendors,
                 )
                 fk_dict = res.to_filament_kit_dict()
                 item_dict = fk_dict["items"][0] if fk_dict.get("items") else {}
@@ -839,6 +978,9 @@ class _DaemonRequestHandler(BaseHTTPRequestHandler):
                     "usage": fk_dict.get("usage", {}),
                 }
                 self._send_json(200, resp)
+                return
+            except ValueError as ve:
+                self._send_error(400, "bad_request", str(ve))
                 return
             except Exception as exc:
                 log.exception("Revise failed")
@@ -873,9 +1015,27 @@ class _DaemonRequestHandler(BaseHTTPRequestHandler):
             decoded_images.append(raw_bytes)
 
         req_tier = body.get("tier")
-        hint = str(body.get("hint", ""))
+        if req_tier is not None:
+            if not isinstance(req_tier, str) or req_tier.strip().lower() not in ("auto", "cpu", "gpu"):
+                self._send_error(400, "bad_request", f"Invalid tier: {req_tier!r}; must be one of 'auto', 'cpu', 'gpu'")
+                return
+            req_tier = req_tier.strip().lower()
+
+        raw_hint = body.get("hint")
+        if raw_hint is not None and not isinstance(raw_hint, str):
+            self._send_error(400, "bad_request", "hint must be a string or null")
+            return
+        hint = raw_hint or ""
+
         spoolman_filaments = body.get("filaments")
+        if spoolman_filaments is not None and not isinstance(spoolman_filaments, list):
+            self._send_error(400, "bad_request", "filaments must be an array or null")
+            return
+
         spoolman_vendors = body.get("vendors")
+        if spoolman_vendors is not None and not isinstance(spoolman_vendors, list):
+            self._send_error(400, "bad_request", "vendors must be an array or null")
+            return
 
         try:
             res, escalated, fallback_reason = self.recognizer.predict(
@@ -994,7 +1154,7 @@ def run_daemon_forever(
 
     t = threading.Thread(target=_sweeper, daemon=True)
     t.start()
-    print(f"[filament-vision-server] Listening on http://{host}:{port} (tier={tier})")
+    print(f"[filament-vision-server] Listening on http://{_format_url_host(host)}:{port} (tier={tier})")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

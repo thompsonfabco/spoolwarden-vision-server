@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Standalone Linux installer for filament-vision-server (v0.2.3)
+# Standalone Linux installer for filament-vision-server (v0.2.4)
 # Usage:
 #   sudo bash install/install.sh [options]
 # Options:
@@ -142,18 +142,20 @@ if [[ "${UNINSTALL}" -eq 1 ]]; then
       if [[ "${target}" == "${PREFIX}"* ]]; then
         rm -f "${link_path}"
       fi
+    elif [[ -f "${link_path}" ]] && grep -qF "FILAMENT_VISION_SERVER_HOME=\"${PREFIX}\"" "${link_path}" 2>/dev/null; then
+      rm -f "${link_path}"
     fi
   done
   PREFIX_REAL="$(cd "${PREFIX}" 2>/dev/null && pwd -P || echo "${PREFIX}")"
   PROJECT_REAL="$(cd "${PROJECT_DIR}" 2>/dev/null && pwd -P || echo "${PROJECT_DIR}")"
   if [[ -d "${PREFIX}" ]]; then
     if [[ "${PREFIX_REAL}" == "${PROJECT_REAL}" ]]; then
-      rm -rf "${PREFIX}/.venv" "${PREFIX}/.uv-python"
+      rm -rf "${PREFIX}/.venv" "${PREFIX}/.uv-python" "${PREFIX}/data/cache"
       rm -f "${PREFIX}/.installed" "${PREFIX}/server.pid" "${PREFIX}/start_server.sh" "${PREFIX}/stop_server.sh"
       echo "[install.sh] Uninstalled in-place runtime files (source tree and user data preserved)."
     else
       rm -rf "${PREFIX}/.venv" "${PREFIX}/.uv-python" "${PREFIX}/configs" "${PREFIX}/models" \
-             "${PREFIX}/data/catalog" "${PREFIX}/data/logs"
+             "${PREFIX}/data/catalog" "${PREFIX}/data/logs" "${PREFIX}/data/cache"
       rm -f "${PREFIX}/.installed" "${PREFIX}/server.pid" "${PREFIX}/start_server.sh" \
             "${PREFIX}/stop_server.sh" "${PREFIX}/data/server.log"
       rmdir "${PREFIX}/data" 2>/dev/null || true
@@ -161,6 +163,9 @@ if [[ "${UNINSTALL}" -eq 1 ]]; then
         echo "[install.sh] Preserved remaining user data under ${PREFIX} (e.g. feedback_queue)."
       fi
     fi
+  fi
+  if [[ -d /etc/filament-vision-server ]]; then
+    rmdir /etc/filament-vision-server 2>/dev/null || true
   fi
   echo "[install.sh] Uninstalled cleanly."
   exit 0
@@ -215,7 +220,7 @@ find_python() {
     fi
   done
   shopt -s nullglob
-  for py_path in "${HOME}/.local/share/uv/python"/cpython-3.1*/bin/python3; do
+  for py_path in "${PREFIX}/.uv-python"/cpython-3.1*/bin/python3 "${HOME}/.local/share/uv/python"/cpython-3.1*/bin/python3; do
     if [[ -x "${py_path}" ]]; then
       if "${py_path}" -c 'import sys, venv, ensurepip; raise SystemExit(0 if (3, 10) <= sys.version_info[:2] <= (3, 14) else 1)' >/dev/null 2>&1; then
         shopt -u nullglob
@@ -229,7 +234,7 @@ find_python() {
     local uv_bin
     uv_bin="$(find_uv)"
     for ver in 3.12 3.11 3.13 3.10; do
-      py_path="$("${uv_bin}" python find "${ver}" 2>/dev/null || true)"
+      py_path="$(UV_PYTHON_INSTALL_DIR="${PREFIX}/.uv-python" "${uv_bin}" python find "${ver}" 2>/dev/null || true)"
       if [[ -n "${py_path}" && -x "${py_path}" ]]; then
         if "${py_path}" -c 'import sys, venv, ensurepip; raise SystemExit(0 if (3, 10) <= sys.version_info[:2] <= (3, 14) else 1)' >/dev/null 2>&1; then
           echo "${py_path}"
@@ -553,11 +558,19 @@ ensure_model_assets
 
 mkdir -p "${PREFIX}/configs" "${PREFIX}/data/catalog" "${PREFIX}/data/cache" "${PREFIX}/models/cpu" "${PREFIX}/models/gpu"
 
-if [[ -d "${PROJECT_DIR}/configs" ]]; then
-  cp -af "${PROJECT_DIR}/configs/." "${PREFIX}/configs/"
-fi
-if [[ -d "${PROJECT_DIR}/data/catalog" ]]; then
-  cp -af "${PROJECT_DIR}/data/catalog/." "${PREFIX}/data/catalog/"
+PREFIX_REAL="$(cd "${PREFIX}" 2>/dev/null && pwd -P || echo "${PREFIX}")"
+PROJECT_REAL="$(cd "${PROJECT_DIR}" 2>/dev/null && pwd -P || echo "${PROJECT_DIR}")"
+if [[ "${PREFIX_REAL}" != "${PROJECT_REAL}" ]]; then
+  if [[ -d "${PROJECT_DIR}/configs" ]]; then
+    for cfg_name in taxonomy.xml cpu_pipeline.xml gpu_vlm_lora.xml dataset_manifest.xml base-model.json; do
+      if [[ -f "${PROJECT_DIR}/configs/${cfg_name}" ]]; then
+        cp -af "${PROJECT_DIR}/configs/${cfg_name}" "${PREFIX}/configs/${cfg_name}"
+      fi
+    done
+  fi
+  if [[ -d "${PROJECT_DIR}/data/catalog" ]]; then
+    cp -af "${PROJECT_DIR}/data/catalog/." "${PREFIX}/data/catalog/"
+  fi
 fi
 
 copy_model_assets() {
@@ -626,21 +639,25 @@ fi
 
 verify_python_deps() {
   local check_gpu="${WITH_GPU}"
+  local check_cuda="${HAS_CUDA}"
   while true; do
     local broken=""
-    broken="$("${VENV_PY}" - "${check_gpu}" <<'PYEOF'
+    broken="$("${VENV_PY}" - "${check_gpu}" "${check_cuda}" <<'PYEOF'
 import importlib, sys
 want_gpu = sys.argv[1] == "1"
+has_cuda = sys.argv[2] == "1"
+ort_pkg = "onnxruntime-gpu" if (want_gpu and has_cuda) else "onnxruntime"
 checks = [
     ("defusedxml", "defusedxml"),
     ("PIL", "Pillow"),
     ("pillow_heif", "pillow-heif"),
     ("numpy", "numpy"),
     ("cv2", "opencv-python-headless"),
-    ("onnxruntime", "onnxruntime"),
+    ("onnxruntime", ort_pkg),
     ("rapidfuzz", "rapidfuzz"),
     ("rapidocr", "rapidocr"),
     ("sklearn", "scikit-learn"),
+    ("cryptography", "cryptography"),
 ]
 if want_gpu:
     checks.extend([
@@ -665,23 +682,30 @@ PYEOF
       return 0
     fi
     echo "[install.sh] Attempting auto-repair for failed Python packages: ${broken}"
+    local pip_extra=()
+    if [[ "${check_gpu}" -eq 1 && "${check_cuda}" -eq 1 ]]; then
+      pip_extra=(--extra-index-url https://download.pytorch.org/whl/cu124)
+    fi
     # shellcheck disable=SC2086
-    "${VENV_PIP}" install --no-cache-dir --force-reinstall ${broken} || true
+    "${VENV_PIP}" install --no-cache-dir --force-reinstall ${broken} "${pip_extra[@]}" || true
 
     local still_broken=""
-    still_broken="$("${VENV_PY}" - "${check_gpu}" <<'PYEOF'
+    still_broken="$("${VENV_PY}" - "${check_gpu}" "${check_cuda}" <<'PYEOF'
 import importlib, sys
 want_gpu = sys.argv[1] == "1"
+has_cuda = sys.argv[2] == "1"
+ort_pkg = "onnxruntime-gpu" if (want_gpu and has_cuda) else "onnxruntime"
 checks = [
     ("defusedxml", "defusedxml"),
     ("PIL", "Pillow"),
     ("pillow_heif", "pillow-heif"),
     ("numpy", "numpy"),
     ("cv2", "opencv-python-headless"),
-    ("onnxruntime", "onnxruntime"),
+    ("onnxruntime", ort_pkg),
     ("rapidfuzz", "rapidfuzz"),
     ("rapidocr", "rapidocr"),
     ("sklearn", "scikit-learn"),
+    ("cryptography", "cryptography"),
 ]
 if want_gpu:
     checks.extend([
@@ -717,8 +741,20 @@ PYEOF
 
 verify_python_deps
 
-FILAMENT_VISION_SERVER_HOME="${PREFIX}" "${VENV_PY}" -m filament_vision_server.service.cli config \
-  --tier "${TIER}" --host "${BIND}" --port "${PORT}" >/dev/null
+env -u FILAMENT_VISION_SERVER_TOKEN -u FILAMENT_KIT_VISION_TOKEN \
+    -u FILAMENT_VISION_SERVER_FEEDBACK_ENDPOINT -u FILAMENT_KIT_VISION_FEEDBACK_ENDPOINT \
+    FILAMENT_VISION_SERVER_HOME="${PREFIX}" "${VENV_PY}" -m filament_vision_server.service.cli config \
+    --tier "${TIER}" --host "${BIND}" --port "${PORT}" >/dev/null
+
+HEALTH_HOST="${BIND}"
+if [[ "${HEALTH_HOST}" == "0.0.0.0" || "${HEALTH_HOST}" == "::" ]]; then
+  HEALTH_HOST="127.0.0.1"
+fi
+if [[ "${HEALTH_HOST}" == *:* && "${HEALTH_HOST}" != \[*\] ]]; then
+  HEALTH_HOST_FMT="[${HEALTH_HOST}]"
+else
+  HEALTH_HOST_FMT="${HEALTH_HOST}"
+fi
 
 cat > "${PREFIX}/start_server.sh" <<EOF
 #!/usr/bin/env bash
@@ -729,10 +765,10 @@ if [[ -f "\${PID_FILE}" ]] && kill -0 "\$(cat "\${PID_FILE}")" 2>/dev/null; then
   echo "[filament-vision-server] Already running (PID \$(cat "\${PID_FILE}"))."
   exit 0
 fi
-nohup "${PREFIX}/.venv/bin/filament-vision-server" serve --host "${BIND}" --port "${PORT}" --tier "${TIER}" \
+nohup "${PREFIX}/.venv/bin/filament-vision-server" serve "\$@" \
   >"${PREFIX}/data/server.log" 2>&1 &
 echo \$! > "\${PID_FILE}"
-echo "[filament-vision-server] Started (PID \$!) on http://${BIND}:${PORT}/"
+echo "[filament-vision-server] Started (PID \$!) on http://${HEALTH_HOST_FMT}:${PORT}/"
 EOF
 chmod +x "${PREFIX}/start_server.sh"
 
@@ -744,7 +780,7 @@ if [[ -f "\${PID_FILE}" ]]; then
   PID="\$(cat "\${PID_FILE}")"
   if [[ "\${PID}" =~ ^[0-9]+$ ]] && kill -0 "\${PID}" 2>/dev/null; then
     PROC_CMD="\$(ps -p "\${PID}" -o args= 2>/dev/null || true)"
-    if grep -Eq 'filament[_-]vision[_-]server|spool-server|python' <<<"\$PROC_CMD"; then
+    if grep -Eq 'filament[_-]vision[_-]server|spool-server' <<<"\$PROC_CMD"; then
       kill "\${PID}" || true
     fi
   fi
@@ -762,16 +798,18 @@ if [[ "$(id -u)" -eq 0 ]]; then
   fi
   chown -R "${SERVICE_USER}:${SERVICE_USER}" "${PREFIX}" || true
   if [[ -d /usr/local/bin ]]; then
-    ln -sf "${PREFIX}/.venv/bin/filament-vision-server" /usr/local/bin/filament-vision-server
-    ln -sf "${PREFIX}/.venv/bin/spool-server" /usr/local/bin/spool-server
+    for bin_name in filament-vision-server spool-server; do
+      cat > "/usr/local/bin/${bin_name}" <<WREOF
+#!/usr/bin/env bash
+export FILAMENT_VISION_SERVER_HOME="${PREFIX}"
+exec "${PREFIX}/.venv/bin/${bin_name}" "\$@"
+WREOF
+      chmod 0755 "/usr/local/bin/${bin_name}"
+    done
   fi
 fi
 
-HEALTH_HOST="${BIND}"
-if [[ "${HEALTH_HOST}" == "0.0.0.0" || "${HEALTH_HOST}" == "::" ]]; then
-  HEALTH_HOST="127.0.0.1"
-fi
-HEALTH_URL="http://${HEALTH_HOST}:${PORT}/v1/health"
+HEALTH_URL="http://${HEALTH_HOST_FMT}:${PORT}/v1/health"
 
 if [[ "${NO_SYSTEMD}" -eq 0 && "$(id -u)" -eq 0 ]] && command -v systemctl >/dev/null 2>&1 && [[ -d /run/systemd/system ]]; then
   echo "[install.sh] Installing systemd service ${SYSTEMD_UNIT_PATH}..."
@@ -813,4 +851,4 @@ fi
 
 touch "${MARKER}"
 HAD_COMPLETE_INSTALL=1
-echo "[install.sh] Installation complete! Web UI: http://${HEALTH_HOST}:${PORT}/"
+echo "[install.sh] Installation complete! Web UI: http://${HEALTH_HOST_FMT}:${PORT}/"
