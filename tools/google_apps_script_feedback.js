@@ -1,5 +1,5 @@
 /**
- * Write-only Google Apps Script Web App for filament-vision-server user feedback bundles.
+ * Write-only Google Apps Script Web App for spoolwarden-vision-server user feedback bundles.
  *
  * Setup:
  *   1. Create a private quarantine folder in Google Drive (shared with NOBODY). Copy its folder ID.
@@ -16,7 +16,7 @@
  *   - Enforces a public-key blocklist and daily caps on upload count and total bytes.
  *   - Verifies proof-of-work: SHA-256(package_sha256 + public_key + pow_nonce) >= MIN_POW_DIFFICULTY leading zero bits.
  *   - Stores the ZIP and its <filename>.meta.json sidecar (public_key + Ed25519 signature + PoW)
- *     in the quarantine folder for offline verification by `filament-vision-server ingest-feedback`.
+ *     in the quarantine folder for offline verification by `spoolwarden-vision-server ingest-feedback`.
  */
 
 const QUARANTINE_FOLDER_ID = "REPLACE_WITH_PRIVATE_QUARANTINE_FOLDER_ID";

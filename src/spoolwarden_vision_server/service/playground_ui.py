@@ -1,4 +1,4 @@
-"""Interactive browser Playground UI for testing filament-vision-server CPU and GPU models on any image (.HEIC/.JPG/.PNG)."""
+"""Interactive browser Playground UI for testing spoolwarden-vision-server CPU and GPU models on any image (.HEIC/.JPG/.PNG)."""
 from __future__ import annotations
 
 import base64
@@ -35,7 +35,7 @@ PLAYGROUND_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>filament-vision-server — Model Playground</title>
+<title>spoolwarden-vision-server — Model Playground</title>
 <style>
   :root {
     --bg: #0f172a; --panel: #1e293b; --border: #334155;
@@ -97,7 +97,7 @@ PLAYGROUND_HTML = """<!DOCTYPE html>
 </style>
 </head>
 <body>
-  <h1>filament-vision-server — Interactive Model Tester</h1>
+  <h1>spoolwarden-vision-server — Interactive Model Tester</h1>
   <div class="sub">Drop any filament spool or box photo (.HEIC, .JPG, .PNG) or click "Random Seed Photo" to test CPU Hybrid &amp; GPU VLM models live.</div>
 
   <div class="layout">

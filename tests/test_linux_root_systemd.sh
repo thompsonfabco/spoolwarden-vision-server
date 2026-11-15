@@ -17,10 +17,10 @@ if [[ ! -d /run/systemd/system ]]; then
   exit 1
 fi
 
-DEFAULT_PREFIX="/opt/filament-vision-server"
-DEFAULT_STATE="/var/lib/filament-vision-server"
-DEFAULT_USER="filament-vision-server"
-UNIT_PATH="/etc/systemd/system/filament-vision-server.service"
+DEFAULT_PREFIX="/opt/spoolwarden-vision-server"
+DEFAULT_STATE="/var/lib/spoolwarden-vision-server"
+DEFAULT_USER="spoolwarden-vision-server"
+UNIT_PATH="/etc/systemd/system/spoolwarden-vision-server.service"
 
 echo "[1/5] Installing with default prefix, default user, and systemd..."
 bash "${REPO_DIR}/install/install.sh" --tier cpu --non-interactive
@@ -28,7 +28,7 @@ bash "${REPO_DIR}/install/install.sh" --tier cpu --non-interactive
 echo "[2/5] Checking service user, group, ownership, and systemd unit..."
 id -u "${DEFAULT_USER}" >/dev/null
 getent group "${DEFAULT_USER}" >/dev/null
-systemctl is-active --quiet filament-vision-server.service
+systemctl is-active --quiet spoolwarden-vision-server.service
 
 echo "[3/5] Checking /v1/health and one POST /v1/read..."
 "${DEFAULT_PREFIX}/.venv/bin/python" - <<'PY'
@@ -66,7 +66,7 @@ echo "[4/5] Uninstalling with --uninstall --purge..."
 bash "${REPO_DIR}/install/install.sh" --uninstall --purge --non-interactive
 
 echo "[5/5] Verifying user, group, unit, prefix, and state dir are gone..."
-if systemctl is-active --quiet filament-vision-server.service 2>/dev/null; then
+if systemctl is-active --quiet spoolwarden-vision-server.service 2>/dev/null; then
   echo "FAIL: systemd service is still active" >&2
   exit 1
 fi

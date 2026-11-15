@@ -1,4 +1,4 @@
-"""filament-vision-server: Dual-tier local filament spool & box label recognition."""
+"""spoolwarden-vision-server: Dual-tier local filament spool & box label recognition."""
 from __future__ import annotations
 
 from .xml_io import (

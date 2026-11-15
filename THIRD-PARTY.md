@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-`filament-vision-server` is licensed under the **GNU General Public License v3.0 or later** (`LICENSE`).
+`spoolwarden-vision-server` is licensed under the **GNU General Public License v3.0 or later** (`LICENSE`).
 It relies on the following open-source libraries, runtime engines, and optional GPU model components, each distributed under its own license:
 
 ## Core Runtime Dependencies

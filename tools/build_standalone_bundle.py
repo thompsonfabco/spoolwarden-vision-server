@@ -1,4 +1,4 @@
-"""Build platform-specific standalone bundles and signed GitHub release archives for filament-vision-server.
+"""Build platform-specific standalone bundles and signed GitHub release archives for spoolwarden-vision-server.
 
 Stages source code, platform-specific installers, static configs, catalog XML,
 CPU ONNX models, and optional GPU LoRA weights into dist/ and packs native
@@ -94,7 +94,7 @@ def _copy_tree_filtered(
 
 
 def _default_bundle_name(version: str, platform: str, include_gpu: bool) -> str:
-    parts = [f"filament-vision-server-{version}"]
+    parts = [f"spoolwarden-vision-server-{version}"]
     if platform in ("windows", "linux"):
         parts.append(platform)
     if not include_gpu:
@@ -199,7 +199,7 @@ def build_bundle(
 
     signed_expected = key_file is not None
     manifest = {
-        "service": "filament-vision-server",
+        "service": "spoolwarden-vision-server",
         "version": version,
         "platform": plat,
         "bundle": bundle_name,
@@ -282,7 +282,7 @@ def build_release_archives(
         staging_dir = PROJECT_ROOT / "dist"
         if staging_dir.is_dir():
             for child in list(staging_dir.iterdir()):
-                if child.is_dir() and child.name.startswith("filament-vision-server-"):
+                if child.is_dir() and child.name.startswith("spoolwarden-vision-server-"):
                     shutil.rmtree(child, ignore_errors=True)
     else:
         staging_dir = release_parent / f".staging-v{version}"
@@ -297,7 +297,7 @@ def build_release_archives(
             include_gpu=True,
             platform="windows",
             key_file=key_file,
-            bundle_name=f"filament-vision-server-{version}-windows",
+            bundle_name=f"spoolwarden-vision-server-{version}-windows",
         )
         win_cpu_dir = build_bundle(
             version=version,
@@ -305,7 +305,7 @@ def build_release_archives(
             include_gpu=False,
             platform="windows",
             key_file=key_file,
-            bundle_name=f"filament-vision-server-{version}-windows-cpu",
+            bundle_name=f"spoolwarden-vision-server-{version}-windows-cpu",
         )
         linux_full_dir = build_bundle(
             version=version,
@@ -313,7 +313,7 @@ def build_release_archives(
             include_gpu=True,
             platform="linux",
             key_file=key_file,
-            bundle_name=f"filament-vision-server-{version}-linux",
+            bundle_name=f"spoolwarden-vision-server-{version}-linux",
         )
         linux_cpu_dir = build_bundle(
             version=version,
@@ -321,7 +321,7 @@ def build_release_archives(
             include_gpu=False,
             platform="linux",
             key_file=key_file,
-            bundle_name=f"filament-vision-server-{version}-linux-cpu",
+            bundle_name=f"spoolwarden-vision-server-{version}-linux-cpu",
         )
 
         win_full_zip = _pack_zip(win_full_dir, release_dir)
@@ -340,7 +340,7 @@ def build_release_archives(
         }
 
     manifest = {
-        "service": "filament-vision-server",
+        "service": "spoolwarden-vision-server",
         "version": version,
         "api_version": "1.1",
         "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
@@ -370,7 +370,7 @@ def build_release_archives(
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Build standalone filament-vision-server bundles and releases")
+    parser = argparse.ArgumentParser(description="Build standalone spoolwarden-vision-server bundles and releases")
     parser.add_argument("--version", default=DEFAULT_VERSION)
     parser.add_argument("--output-dir", default=None)
     parser.add_argument("--platform", choices=["all", "windows", "linux"], default="all")

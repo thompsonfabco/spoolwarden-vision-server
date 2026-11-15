@@ -19,7 +19,11 @@ except ImportError as exc:
 
 
 def _detect_project_root() -> Path:
-    env_home = os.environ.get("FILAMENT_VISION_SERVER_HOME") or os.environ.get("FILAMENT_KIT_VISION_HOME")
+    env_home = (
+        os.environ.get("SPOOLWARDEN_VISION_SERVER_HOME")
+        or os.environ.get("FILAMENT_VISION_SERVER_HOME")
+        or os.environ.get("FILAMENT_KIT_VISION_HOME")
+    )
     if env_home:
         return Path(env_home).resolve()
     src_root = Path(__file__).resolve().parent.parent.parent
@@ -45,7 +49,8 @@ DATA_DIR = PROJECT_ROOT / "data"
 
 def _detect_state_dir() -> Path | None:
     env_state = (
-        os.environ.get("FILAMENT_VISION_SERVER_STATE_DIR")
+        os.environ.get("SPOOLWARDEN_VISION_SERVER_STATE_DIR")
+        or os.environ.get("FILAMENT_VISION_SERVER_STATE_DIR")
         or os.environ.get("FILAMENT_KIT_VISION_STATE_DIR")
         or ""
     ).strip()
@@ -421,7 +426,7 @@ class IntakeReadResult:
     questions: list[str] = field(default_factory=list)
     tier: str = "cpu-hybrid"
     latency_ms: float = 0.0
-    model_name: str = "filament-vision-server-cpu"
+    model_name: str = "spoolwarden-vision-server-cpu"
 
     def to_element(self) -> StdET.Element:
         root = StdET.Element(
@@ -457,7 +462,7 @@ class IntakeReadResult:
             questions=questions,
             tier=root.attrib.get("tier", "cpu-hybrid"),
             latency_ms=float(root.attrib.get("latency-ms", "0.0")),
-            model_name=root.attrib.get("model", "filament-vision-server"),
+            model_name=root.attrib.get("model", "spoolwarden-vision-server"),
         )
 
     @classmethod
@@ -477,7 +482,7 @@ class IntakeReadResult:
             "items": [it.to_filament_kit_item() for it in self.items],
             "questions": list(self.questions),
             "reader": {
-                "service": "filament-vision-server",
+                "service": "spoolwarden-vision-server",
                 "module_version": "0.2.4",
                 "tier_used": "gpu" if "gpu" in self.tier.lower() else "cpu",
                 "escalated": escalated,
@@ -486,7 +491,7 @@ class IntakeReadResult:
                 "latency_ms": round(self.latency_ms, 1),
             },
             "usage": {
-                "model": f"filament-vision-server/{'gpu' if 'gpu' in self.tier.lower() else 'cpu'}",
+                "model": f"spoolwarden-vision-server/{'gpu' if 'gpu' in self.tier.lower() else 'cpu'}",
                 "input_tokens": 0,
                 "cached": 0,
                 "output_tokens": 0,

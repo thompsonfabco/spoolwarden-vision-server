@@ -1,4 +1,4 @@
-"""Self-contained dark-mode Web UI served at GET / and GET /ui by filament-vision-server."""
+"""Self-contained dark-mode Web UI served at GET / and GET /ui by spoolwarden-vision-server."""
 from __future__ import annotations
 
 STANDALONE_WEB_UI_HTML = r"""<!DOCTYPE html>
@@ -6,7 +6,7 @@ STANDALONE_WEB_UI_HTML = r"""<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Filament Vision Server</title>
+<title>Spoolwarden Vision Server</title>
 <style>
   :root {
     --bg: #0b1120;
@@ -246,7 +246,7 @@ STANDALONE_WEB_UI_HTML = r"""<!DOCTYPE html>
 <div class="container">
   <header>
     <div>
-      <h1>Filament Vision Server</h1>
+      <h1>Spoolwarden Vision Server</h1>
       <div class="subtitle">Standalone dual-tier ONNX + Qwen2.5-VL spool recognition server</div>
     </div>
     <div class="header-right">

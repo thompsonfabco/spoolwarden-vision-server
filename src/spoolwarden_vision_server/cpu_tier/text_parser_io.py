@@ -100,7 +100,7 @@ def save_text_parser_npz(bundle: dict[str, Any], out_path: str | Path) -> Path:
     """Export trained sklearn text parser pipelines to a pickle-free compressed .npz archive."""
     out = Path(out_path)
     out.parent.mkdir(parents=True, exist_ok=True)
-    meta: dict[str, Any] = {"format": "filament-vision-server-text-parser-v2", "pipes": {}}
+    meta: dict[str, Any] = {"format": "spoolwarden-vision-server-text-parser-v2", "pipes": {}}
     arrays: dict[str, np.ndarray] = {}
 
     for pipe_name in ("vendor_pipe", "material_pipe", "line_pipe"):

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Release manifest signing tool for filament-vision-server (Ed25519 RFC 8032 over SHA256SUMS).
+"""Release manifest signing tool for spoolwarden-vision-server (Ed25519 RFC 8032 over SHA256SUMS).
 
 Subcommands:
   keygen --out PATH      Generate an unencrypted PKCS#8 Ed25519 private key outside the repo

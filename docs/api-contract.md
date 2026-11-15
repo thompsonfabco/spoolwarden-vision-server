@@ -1,11 +1,11 @@
-# Filament Vision Server HTTP REST API (`v1`, `api_version: "1.1"`)
+# Spoolwarden Vision Server HTTP REST API (`v1`, `api_version: "1.1"`)
 
 Default bind address: `http://127.0.0.1:7920`.
 
 ## Security, CORS & Authentication
 
-- **CORS & Origin Gating:** `OPTIONS`, `POST`, and `DELETE` requests carrying an `Origin` header must match loopback (`http(s)://localhost`, `127.0.0.1`, `::1`) or `FILAMENT_VISION_SERVER_ALLOWED_ORIGINS`. Untrusted `Origin` headers receive `403 forbidden_origin`.
-- **Bearer Authentication:** When `FILAMENT_VISION_SERVER_TOKEN` (or `token` in `configs/service_config.xml`) is configured, every API route except `GET /`, `GET /ui`, and `GET /v1/health` requires `Authorization: Bearer <token>`, returning `401 unauthorized` otherwise.
+- **CORS & Origin Gating:** `OPTIONS`, `POST`, and `DELETE` requests carrying an `Origin` header must match loopback (`http(s)://localhost`, `127.0.0.1`, `::1`) or `SPOOLWARDEN_VISION_SERVER_ALLOWED_ORIGINS`. Untrusted `Origin` headers receive `403 forbidden_origin`.
+- **Bearer Authentication:** When `SPOOLWARDEN_VISION_SERVER_TOKEN` (or `token` in `configs/service_config.xml`) is configured, every API route except `GET /`, `GET /ui`, and `GET /v1/health` requires `Authorization: Bearer <token>`, returning `401 unauthorized` otherwise.
 - **Request Framing:** All `POST` endpoints require `Content-Length` (`<= 67,108,864` bytes / 64 MB) and JSON body `application/json; charset=utf-8`. `Transfer-Encoding: chunked` is rejected with `411 length_required`.
 - **Image Safety Limits:** Individual decoded photos on `/v1/read` are bounded by `MAX_PHOTO_BYTES` (20 MB), `MAX_PHOTOS` (8), `MAX_DECODE_SIDE` (10,000 px), and `MAX_DECODE_PIXELS` (36,000,000 px). Oversized images return `413 too_large` before pixel buffer decompression.
 
@@ -16,7 +16,7 @@ Serves the built-in dark-mode Web UI HTML page (`text/html; charset=utf-8`). Una
 
 ### `GET /v1/health` (alias `/health`)
 Returns daemon health, version, tier capabilities, auth requirement, and request limits:
-- `service`: `"filament-vision-server"`
+- `service`: `"spoolwarden-vision-server"`
 - `api_version`: `"1.1"`
 - `module_version`: `"0.2.4"`
 - `status`: `"ok"` or `"degraded"` (if `default_tier == "gpu"` and CUDA is unavailable)
@@ -55,8 +55,8 @@ Recognizes 1–8 filament spool or box images.
     "api_version": "1.1",
     "items": [ { "vendor": "...", "material": "...", "line": "...", "color_name": "...", "color_hex": "..." } ],
     "questions": [],
-    "reader": { "service": "filament-vision-server", "module_version": "0.2.4", "tier_used": "cpu", "escalated": false, "fallback_reason": null, "model": "...", "latency_ms": 120.5 },
-    "usage": { "model": "filament-vision-server/cpu", "input_tokens": 0, "cached": 0, "output_tokens": 0 }
+    "reader": { "service": "spoolwarden-vision-server", "module_version": "0.2.4", "tier_used": "cpu", "escalated": false, "fallback_reason": null, "model": "...", "latency_ms": 120.5 },
+    "usage": { "model": "spoolwarden-vision-server/cpu", "input_tokens": 0, "cached": 0, "output_tokens": 0 }
   }
   ```
 

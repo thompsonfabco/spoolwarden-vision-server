@@ -30,13 +30,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "try { $r = Invoke-RestMethod -Uri ($url + '/v1/health') -TimeoutSec 2; if ($r.status) { $alreadyUp = $true } } catch {}; " ^
   "if (-not $alreadyUp) { " ^
   "  New-Item -ItemType Directory -Path (Join-Path $root 'data\logs') -Force | Out-Null; " ^
-  "  $env:FILAMENT_VISION_SERVER_HOME = $root; " ^
-  "  $p = Start-Process -FilePath $venvPy -ArgumentList @('-m','filament_vision_server.service.cli','serve') -WorkingDirectory $root -WindowStyle Hidden -RedirectStandardOutput (Join-Path $root 'data\logs\server.out.log') -RedirectStandardError (Join-Path $root 'data\logs\server.err.log') -PassThru; " ^
+  "  $env:SPOOLWARDEN_VISION_SERVER_HOME = $root; " ^
+  "  $p = Start-Process -FilePath $venvPy -ArgumentList @('-m','spoolwarden_vision_server.service.cli','serve') -WorkingDirectory $root -WindowStyle Hidden -RedirectStandardOutput (Join-Path $root 'data\logs\server.out.log') -RedirectStandardError (Join-Path $root 'data\logs\server.err.log') -PassThru; " ^
   "  Set-Content -Path (Join-Path $root 'server.pid') -Value \"$($p.Id)\" -Encoding ASCII; " ^
   "  for ($i = 0; $i -lt 30; $i++) { Start-Sleep -Seconds 1; try { $r = Invoke-RestMethod -Uri ($url + '/v1/health') -TimeoutSec 2; if ($r.status) { $alreadyUp = $true; break } } catch {} }; " ^
   "}; " ^
   "$rawArgs = if ($env:FVS_BAT_ARGS) { $env:FVS_BAT_ARGS } else { '' }; " ^
-  "if ($alreadyUp) { Write-Host ('[filament-vision-server] Listening at ' + $url + '/'); if ($rawArgs -notmatch '(^|\s)--no-browser(\s|$)') { Start-Process ($url + '/') } } else { Write-Error ('Server failed to respond at ' + $url + '/v1/health'); exit 1 }"
+  "if ($alreadyUp) { Write-Host ('[spoolwarden-vision-server] Listening at ' + $url + '/'); if ($rawArgs -notmatch '(^|\s)--no-browser(\s|$)') { Start-Process ($url + '/') } } else { Write-Error ('Server failed to respond at ' + $url + '/v1/health'); exit 1 }"
 if errorlevel 1 (
     pause
     exit /b 1

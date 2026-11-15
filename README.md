@@ -1,9 +1,9 @@
-# Filament Vision Server (`v0.3.1`)
+# Spoolwarden Vision Server (`v0.3.1`)
 
 Standalone, cross-platform 3D printer filament spool recognition server for **Windows** and **Linux**, with a built-in dark-mode Web UI, dual-tier **ONNX CPU + Qwen2.5-VL GPU** inference, catalog enrichment, opt-in training feedback collection, and an HTTP REST API (`v1`).
 
 > [!TIP]
-> **New user?** Jump straight to the step-by-step **[User QuickStart Guide (`QUICKSTART.md`)](QUICKSTART.md)** or download a ready-to-run package from the **[`v0.3.1` Release](https://github.com/thompsonfabco/filament-vision-server/releases/tag/v0.3.1)**.
+> **New user?** Jump straight to the step-by-step **[User QuickStart Guide (`QUICKSTART.md`)](QUICKSTART.md)** or download a ready-to-run package from the **[`v0.3.1` Release](https://github.com/thompsonfabco/spoolwarden-vision-server/releases/tag/v0.3.1)**.
 
 ---
 
@@ -27,14 +27,14 @@ Standalone, cross-platform 3D printer filament spool recognition server for **Wi
 
 ## Release Packages (`v0.3.1`)
 
-Platform-specific archives (`.zip` for Windows, `.tar.gz` for Linux) are published on the [GitHub Releases page](https://github.com/thompsonfabco/filament-vision-server/releases/tag/v0.3.1):
+Platform-specific archives (`.zip` for Windows, `.tar.gz` for Linux) are published on the [GitHub Releases page](https://github.com/thompsonfabco/spoolwarden-vision-server/releases/tag/v0.3.1):
 
 | Archive | Platform | Size | Tier Bundle |
 | :--- | :--- | :---: | :--- |
-| `filament-vision-server-0.3.1-windows.zip` | Windows (x64) | ~316 MB | Full (`models/cpu` + `models/gpu` LoRA adapter) |
-| `filament-vision-server-0.3.1-windows-cpu.zip` | Windows (x64) | ~146 MB | CPU-Only (`models/cpu` ONNX + OCR + catalog) |
-| `filament-vision-server-0.3.1-linux.tar.gz` | Linux (x86_64) | ~316 MB | Full (`models/cpu` + `models/gpu` LoRA adapter) |
-| `filament-vision-server-0.3.1-linux-cpu.tar.gz` | Linux (x86_64) | ~146 MB | CPU-Only (`models/cpu` ONNX + OCR + catalog) |
+| `spoolwarden-vision-server-0.3.1-windows.zip` | Windows (x64) | ~316 MB | Full (`models/cpu` + `models/gpu` LoRA adapter) |
+| `spoolwarden-vision-server-0.3.1-windows-cpu.zip` | Windows (x64) | ~146 MB | CPU-Only (`models/cpu` ONNX + OCR + catalog) |
+| `spoolwarden-vision-server-0.3.1-linux.tar.gz` | Linux (x86_64) | ~316 MB | Full (`models/cpu` + `models/gpu` LoRA adapter) |
+| `spoolwarden-vision-server-0.3.1-linux-cpu.tar.gz` | Linux (x86_64) | ~146 MB | CPU-Only (`models/cpu` ONNX + OCR + catalog) |
 
 Every release also includes `manifest.json`, `SHA256SUMS`, and an RFC 8032 Ed25519 signature `SHA256SUMS.sig`.
 
@@ -61,7 +61,7 @@ For full screenshots-free walkthroughs, firewall/LAN setup, and troubleshooting,
 
 ### Windows (One-Click)
 
-1. Extract `filament-vision-server-0.3.1-windows*.zip`.
+1. Extract `spoolwarden-vision-server-0.3.1-windows*.zip`.
 2. Double-click **`install.bat`** (or run PowerShell):
    ```powershell
    powershell -ExecutionPolicy Bypass -File .\install\install.ps1 -Start -OpenBrowser
@@ -74,7 +74,7 @@ Supported `install\install.ps1` options:
 - `-Bind 127.0.0.1` (use `0.0.0.0` to allow phones/tablets on your LAN)
 - `-Prefix <dir>` (install to a target directory instead of in-place)
 - `-WithGpu` (install CUDA PyTorch, Transformers, PEFT, Accelerate, BitsAndBytes, and `qwen-vl-utils`)
-- `-RegisterStartup` (create logon Scheduled Task `FilamentVisionServer`)
+- `-RegisterStartup` (create logon Scheduled Task `SpoolwardenVisionServer`)
 - `-Start` / `-OpenBrowser` / `-NonInteractive` / `-Uninstall`
 
 ### Linux (`systemd` or User-Space)
@@ -82,15 +82,15 @@ Supported `install\install.ps1` options:
 Extract the `.tar.gz` archive and run `install/install.sh`:
 
 ```bash
-tar -xzf filament-vision-server-0.3.1-linux-cpu.tar.gz
-cd filament-vision-server-0.3.1-linux-cpu
+tar -xzf spoolwarden-vision-server-0.3.1-linux-cpu.tar.gz
+cd spoolwarden-vision-server-0.3.1-linux-cpu
 
-# System service install (/opt/filament-vision-server + systemd unit):
+# System service install (/opt/spoolwarden-vision-server + systemd unit):
 sudo bash install/install.sh
 
 # Or user-space install without root / systemd:
-bash install/install.sh --no-systemd --prefix "$HOME/filament-vision-server"
-"$HOME/filament-vision-server/start_server.sh"
+bash install/install.sh --no-systemd --prefix "$HOME/spoolwarden-vision-server"
+"$HOME/spoolwarden-vision-server/start_server.sh"
 ```
 
 Supported `install/install.sh` options:
@@ -98,7 +98,7 @@ Supported `install/install.sh` options:
 - `--port 7920` (default: `7920`)
 - `--bind 127.0.0.1` (use `0.0.0.0` for LAN access)
 - `--user <username>` (service user for `systemd` unit)
-- `--prefix /opt/filament-vision-server`
+- `--prefix /opt/spoolwarden-vision-server`
 - `--assets <models_dir>` (defaults to `./models`)
 - `--with-gpu` (install optional PyTorch/Transformers/PEFT GPU extras)
 - `--no-systemd` (emit `start_server.sh` and `stop_server.sh` under `--prefix`)
@@ -112,10 +112,10 @@ Requires **Python 3.10 – 3.14** and trained model assets under `models/`:
 python -m venv .venv
 # Linux / macOS:
 .venv/bin/pip install -e .          # or ".[gpu]" for CUDA VLM support
-.venv/bin/filament-vision-server serve
+.venv/bin/spoolwarden-vision-server serve
 # Windows:
 .venv\Scripts\pip install -e .      # or ".[gpu]"
-.venv\Scripts\filament-vision-server serve
+.venv\Scripts\spoolwarden-vision-server serve
 ```
 
 ---
@@ -175,7 +175,7 @@ tools\update_models.bat --force --tier all
 
 ## HTTP REST API (`v1`)
 
-Default listen address: `http://127.0.0.1:7920`. CORS allows loopback browser origins (`localhost`, `127.0.0.1`, `::1`), same-origin LAN Web UI requests whose `Origin` host matches the request `Host` header (when bound to `0.0.0.0` or `::`), and any explicit origins configured via `FILAMENT_VISION_SERVER_ALLOWED_ORIGINS`. Browser `OPTIONS`/`POST`/`DELETE` requests carrying an untrusted `Origin` header are rejected (`403 forbidden_origin`). Set `FILAMENT_VISION_SERVER_TOKEN` to require `Authorization: Bearer <token>` on API routes (the Web UI keeps any entered token in browser `sessionStorage`; `GET /`, `/ui`, and `/v1/health` stay unauthenticated).
+Default listen address: `http://127.0.0.1:7920`. CORS allows loopback browser origins (`localhost`, `127.0.0.1`, `::1`), same-origin LAN Web UI requests whose `Origin` host matches the request `Host` header (when bound to `0.0.0.0` or `::`), and any explicit origins configured via `SPOOLWARDEN_VISION_SERVER_ALLOWED_ORIGINS`. Browser `OPTIONS`/`POST`/`DELETE` requests carrying an untrusted `Origin` header are rejected (`403 forbidden_origin`). Set `SPOOLWARDEN_VISION_SERVER_TOKEN` to require `Authorization: Bearer <token>` on API routes (the Web UI keeps any entered token in browser `sessionStorage`; `GET /`, `/ui`, and `/v1/health` stay unauthenticated).
 
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
@@ -217,32 +217,32 @@ curl -s -X POST http://127.0.0.1:7920/v1/revise \
 
 ## CLI Reference
 
-Both `filament-vision-server` and `spool-server` invoke `filament_vision_server.service.cli:main`:
+Both `spoolwarden-vision-server` and `spool-server` invoke `spoolwarden_vision_server.service.cli:main`:
 
 ```bash
-filament-vision-server serve [--host 127.0.0.1] [--port 7920] [--tier auto|cpu|gpu]
-filament-vision-server predict path/to/spool.jpg [--tier auto|cpu|gpu] [--format xml|filament-kit]
-filament-vision-server status
-filament-vision-server config [--tier auto|cpu|gpu] [--host 127.0.0.1] [--port 7920] \
+spoolwarden-vision-server serve [--host 127.0.0.1] [--port 7920] [--tier auto|cpu|gpu]
+spoolwarden-vision-server predict path/to/spool.jpg [--tier auto|cpu|gpu] [--format xml|filament-kit]
+spoolwarden-vision-server status
+spoolwarden-vision-server config [--tier auto|cpu|gpu] [--host 127.0.0.1] [--port 7920] \
     [--idle-unload-seconds 300] [--feedback-opt-in true|false] [--feedback-endpoint URL]
-filament-vision-server playground [--host 127.0.0.1] [--port 7861]
-filament-vision-server ingest-feedback <zip_or_dir>
-filament-vision-server update-models [--source PATH] [--min-new-samples 10] [--force] [--tier cpu|gpu|all]
-filament-vision-server train [--tier cpu|gpu|all]
-filament-vision-server benchmark [--no-gpu]
-filament-vision-server sync-catalog [--library-root PATH]
+spoolwarden-vision-server playground [--host 127.0.0.1] [--port 7861]
+spoolwarden-vision-server ingest-feedback <zip_or_dir>
+spoolwarden-vision-server update-models [--source PATH] [--min-new-samples 10] [--force] [--tier cpu|gpu|all]
+spoolwarden-vision-server train [--tier cpu|gpu|all]
+spoolwarden-vision-server benchmark [--no-gpu]
+spoolwarden-vision-server sync-catalog [--library-root PATH]
 ```
 
 ### Environment Variables
 
 | Variable | Description |
 | :--- | :--- |
-| `FILAMENT_VISION_SERVER_HOME` | Override base directory containing `configs/`, `data/`, and `models/` |
-| `FILAMENT_VISION_SERVER_STATE_DIR` | External state folder for `service_config.xml`, bearer token, Ed25519 feedback key, and `feedback_queue/` |
-| `FILAMENT_VISION_SERVER_TOKEN` | Require `Authorization: Bearer <token>` on API routes |
-| `FILAMENT_VISION_SERVER_ALLOWED_ORIGINS` | Comma-separated extra cross-origin URLs allowed alongside loopback & same-origin LAN UI (`http://...`) |
-| `FILAMENT_VISION_SERVER_FEEDBACK_ENDPOINT` | Override the default opt-in training feedback upload endpoint |
-| `FILAMENT_VISION_SERVER_CPU_ONLY=1` | Force ONNX Runtime `CPUExecutionProvider` (skip CUDA/DirectML/CoreML) |
+| `SPOOLWARDEN_VISION_SERVER_HOME` | Override base directory containing `configs/`, `data/`, and `models/` |
+| `SPOOLWARDEN_VISION_SERVER_STATE_DIR` | External state folder for `service_config.xml`, bearer token, Ed25519 feedback key, and `feedback_queue/` |
+| `SPOOLWARDEN_VISION_SERVER_TOKEN` | Require `Authorization: Bearer <token>` on API routes |
+| `SPOOLWARDEN_VISION_SERVER_ALLOWED_ORIGINS` | Comma-separated extra cross-origin URLs allowed alongside loopback & same-origin LAN UI (`http://...`) |
+| `SPOOLWARDEN_VISION_SERVER_FEEDBACK_ENDPOINT` | Override the default opt-in training feedback upload endpoint |
+| `SPOOLWARDEN_VISION_SERVER_CPU_ONLY=1` | Force ONNX Runtime `CPUExecutionProvider` (skip CUDA/DirectML/CoreML) |
 
 ---
 
@@ -251,10 +251,10 @@ filament-vision-server sync-catalog [--library-root PATH]
 - **Off by default:** No correction or image is ever queued or uploaded unless you explicitly opt in.
 - **Nothing sent automatically:** Queued corrections wait locally in your state folder (`feedback_queue/`) until you press **Send** (or call `POST /v1/feedback/submit`).
 - **What a package holds:** Photos stripped of all EXIF/GPS metadata and resized to at most `1024 px`, the original reading, your correction, and an optional note.
-- **Where it goes:** Packages are uploaded to the project maintainer's write-only intake for review and future model training (`tools/google_apps_script_feedback.js` -> `filament-vision-server ingest-feedback`).
+- **Where it goes:** Packages are uploaded to the project maintainer's write-only intake for review and future model training (`tools/google_apps_script_feedback.js` -> `spoolwarden-vision-server ingest-feedback`).
 - **Anonymous per-installation key:** On first opt-in, the service generates an anonymous Ed25519 key pair in its state folder (nothing else identifying is included) and signs each package's SHA-256 alongside a short proof-of-work nonce computed in the background at submit time.
 
-> **Note on `src/filament_vision_server/data_engine/`:** Contains offline dataset harvesting and auto-labeling tools used only for model training; it is not imported or used by the runtime service.
+> **Note on `src/spoolwarden_vision_server/data_engine/`:** Contains offline dataset harvesting and auto-labeling tools used only for model training; it is not imported or used by the runtime service.
 
 ---
 

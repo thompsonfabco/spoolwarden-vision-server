@@ -6,7 +6,7 @@ from typing import Any
 
 import numpy as np
 
-log = logging.getLogger("filament_vision_server.ocr")
+log = logging.getLogger("spoolwarden_vision_server.ocr")
 
 try:
     from rapidocr import RapidOCR as _RapidOCRV3

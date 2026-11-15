@@ -1,4 +1,4 @@
-"""Command-line interface for filament-vision-server (serve, predict, config, status, sync-catalog, train, benchmark)."""
+"""Command-line interface for spoolwarden-vision-server (serve, predict, config, status, sync-catalog, train, benchmark)."""
 from __future__ import annotations
 
 import argparse
@@ -25,7 +25,7 @@ from .updater import run_one_click_update
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="filament-vision-server",
+        prog="spoolwarden-vision-server",
         description="Local dual-tier (CPU ONNX + GPU VLM) 3D printer filament recognition engine",
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -44,7 +44,7 @@ def main(argv: list[str] | None = None) -> int:
     p_pred.add_argument("--format", choices=["xml", "filament-kit"], default="xml")
 
     # config
-    p_cfg = sub.add_parser("config", help="View or update filament-vision-server service configuration (XML)")
+    p_cfg = sub.add_parser("config", help="View or update spoolwarden-vision-server service configuration (XML)")
     p_cfg.add_argument("--tier", choices=["auto", "cpu", "gpu"], default=None)
     p_cfg.add_argument("--host", default=None)
     p_cfg.add_argument("--port", type=int, default=None)

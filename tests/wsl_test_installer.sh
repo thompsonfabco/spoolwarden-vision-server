@@ -39,7 +39,7 @@ bash "${PROJECT_DIR}/install/install.sh" \
 
 [[ -f "${TEST_PREFIX}/.installed" ]] || { echo "[wsl_test] Missing .installed marker" >&2; exit 1; }
 [[ -x "${TEST_PREFIX}/.venv/bin/python" ]] || { echo "[wsl_test] Missing venv python" >&2; exit 1; }
-[[ -x "${TEST_PREFIX}/.venv/bin/filament-vision-server" ]] || { echo "[wsl_test] Missing filament-vision-server CLI" >&2; exit 1; }
+[[ -x "${TEST_PREFIX}/.venv/bin/spoolwarden-vision-server" ]] || { echo "[wsl_test] Missing spoolwarden-vision-server CLI" >&2; exit 1; }
 [[ -x "${TEST_PREFIX}/start_server.sh" ]] || { echo "[wsl_test] Missing executable start_server.sh" >&2; exit 1; }
 [[ -x "${TEST_PREFIX}/stop_server.sh" ]] || { echo "[wsl_test] Missing executable stop_server.sh" >&2; exit 1; }
 

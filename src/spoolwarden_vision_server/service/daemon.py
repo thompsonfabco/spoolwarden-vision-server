@@ -82,7 +82,8 @@ _CONFIG_LOCK = threading.RLock()
 
 def _is_cpu_only_env() -> bool:
     raw = (
-        os.environ.get("FILAMENT_VISION_SERVER_CPU_ONLY")
+        os.environ.get("SPOOLWARDEN_VISION_SERVER_CPU_ONLY")
+        or os.environ.get("FILAMENT_VISION_SERVER_CPU_ONLY")
         or os.environ.get("FILAMENT_KIT_VISION_CPU_ONLY")
         or ""
     )
@@ -106,7 +107,11 @@ def _is_trusted_origin(origin: str, host_header: str = "") -> bool:
             return True
         if host_header and parsed.netloc.lower() == host_header.strip().lower():
             return True
-    allowed_env = os.environ.get("FILAMENT_VISION_SERVER_ALLOWED_ORIGINS", "")
+    allowed_env = (
+        os.environ.get("SPOOLWARDEN_VISION_SERVER_ALLOWED_ORIGINS")
+        or os.environ.get("FILAMENT_VISION_SERVER_ALLOWED_ORIGINS")
+        or ""
+    )
     if allowed_env:
         allowed_set = {a.strip().rstrip("/").lower() for a in allowed_env.split(",") if a.strip()}
         if o.rstrip("/").lower() in allowed_set:
@@ -132,18 +137,32 @@ def load_service_config(path: str | Path | None = None, include_env: bool = True
     p = Path(DEFAULT_SERVICE_CONFIG_XML if path is None else path)
     if include_env:
         env_endpoint = (
-            os.environ.get("FILAMENT_VISION_SERVER_FEEDBACK_ENDPOINT")
+            os.environ.get("SPOOLWARDEN_VISION_SERVER_FEEDBACK_ENDPOINT")
+            or os.environ.get("FILAMENT_VISION_SERVER_FEEDBACK_ENDPOINT")
             or os.environ.get("FILAMENT_KIT_VISION_FEEDBACK_ENDPOINT")
             or ""
         ).strip()
         env_token = (
-            os.environ.get("FILAMENT_VISION_SERVER_TOKEN")
+            os.environ.get("SPOOLWARDEN_VISION_SERVER_TOKEN")
+            or os.environ.get("FILAMENT_VISION_SERVER_TOKEN")
             or os.environ.get("FILAMENT_KIT_VISION_TOKEN")
             or ""
         ).strip()
-        env_host = os.environ.get("FILAMENT_VISION_SERVER_HOST", "").strip()
-        env_port_raw = os.environ.get("FILAMENT_VISION_SERVER_PORT", "").strip()
-        env_tier = os.environ.get("FILAMENT_VISION_SERVER_TIER", "").strip().lower()
+        env_host = (
+            os.environ.get("SPOOLWARDEN_VISION_SERVER_HOST")
+            or os.environ.get("FILAMENT_VISION_SERVER_HOST")
+            or ""
+        ).strip()
+        env_port_raw = (
+            os.environ.get("SPOOLWARDEN_VISION_SERVER_PORT")
+            or os.environ.get("FILAMENT_VISION_SERVER_PORT")
+            or ""
+        ).strip()
+        env_tier = (
+            os.environ.get("SPOOLWARDEN_VISION_SERVER_TIER")
+            or os.environ.get("FILAMENT_VISION_SERVER_TIER")
+            or ""
+        ).strip().lower()
     else:
         env_endpoint = ""
         env_token = ""
@@ -160,7 +179,7 @@ def load_service_config(path: str | Path | None = None, include_env: bool = True
             try:
                 cfg["port"] = int(env_port_raw)
             except ValueError:
-                log.warning("Ignoring invalid FILAMENT_VISION_SERVER_PORT=%r", env_port_raw)
+                log.warning("Ignoring invalid SPOOLWARDEN_VISION_SERVER_PORT=%r", env_port_raw)
         if env_tier in ("auto", "cpu", "gpu"):
             cfg["tier"] = env_tier
         return cfg
@@ -553,7 +572,7 @@ class FilamentRecognizer:
         return IntakeReadResult(
             items=[item],
             tier="revise",
-            model_name="filament-vision-server/revise",
+            model_name="spoolwarden-vision-server/revise",
             latency_ms=5.0,
         )
 
@@ -643,7 +662,7 @@ class _DaemonRequestHandler(BaseHTTPRequestHandler):
                 ""
                 if gpu_ok
                 else (
-                    "disabled by FILAMENT_VISION_SERVER_CPU_ONLY"
+                    "disabled by SPOOLWARDEN_VISION_SERVER_CPU_ONLY"
                     if _is_cpu_only_env()
                     else "no CUDA device"
                 )
@@ -654,7 +673,7 @@ class _DaemonRequestHandler(BaseHTTPRequestHandler):
             fb_st = self.recognizer.feedback_queue.status()
 
             payload = {
-                "service": "filament-vision-server",
+                "service": "spoolwarden-vision-server",
                 "api_version": API_VERSION,
                 "module_version": MODULE_VERSION,
                 "status": status_str,
@@ -1207,7 +1226,7 @@ def start_daemon(
     feedback_dir: str | Path = DEFAULT_FEEDBACK_DIR,
     pow_difficulty: int = DEFAULT_POW_DIFFICULTY,
 ) -> ThreadingHTTPServer:
-    """Create and return a configured ThreadingHTTPServer for filament-vision-server."""
+    """Create and return a configured ThreadingHTTPServer for spoolwarden-vision-server."""
     recognizer = FilamentRecognizer(
         default_tier=tier,
         idle_unload_seconds=idle_unload_seconds,
@@ -1261,7 +1280,7 @@ def run_daemon_forever(
 
     t = threading.Thread(target=_sweeper, daemon=True)
     t.start()
-    print(f"[filament-vision-server] Listening on http://{_format_url_host(host)}:{port} (tier={tier})")
+    print(f"[spoolwarden-vision-server] Listening on http://{_format_url_host(host)}:{port} (tier={tier})")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

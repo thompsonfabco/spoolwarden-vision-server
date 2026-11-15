@@ -26,7 +26,7 @@ if ([string]::IsNullOrWhiteSpace($Prefix)) {
 }
 if ([string]::IsNullOrWhiteSpace($StateDir)) {
     $stateBase = if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA } else { Join-Path $env:USERPROFILE "AppData\Local" }
-    $TargetStateDir = Join-Path $stateBase "filament-vision-server"
+    $TargetStateDir = Join-Path $stateBase "spoolwarden-vision-server"
 } else {
     $TargetStateDir = [System.IO.Path]::GetFullPath($StateDir)
 }
@@ -40,7 +40,7 @@ function Stop-FilamentServerProcess {
         if ($rawPid -match '^\d+$') {
             $pidNum = [int]$rawPid
             $cim = Get-CimInstance Win32_Process -Filter "ProcessId = $pidNum" -ErrorAction SilentlyContinue
-            if ($cim -and (($cim.CommandLine -match 'filament[_-]vision[_-]server|spool-server') -or ($cim.Name -match '^filament-vision-server'))) {
+            if ($cim -and (($cim.CommandLine -match 'filament[_-]vision[_-]server|spool-server') -or ($cim.Name -match '^spoolwarden-vision-server'))) {
                 Write-Host "[install.ps1] Stopping server PID $rawPid..."
                 Stop-Process -Id $pidNum -Force -ErrorAction SilentlyContinue
             }
@@ -51,7 +51,7 @@ function Stop-FilamentServerProcess {
         $normRoot = $RootDir.TrimEnd('\').ToLowerInvariant()
         Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
             $_.CommandLine -and
-            ($_.CommandLine -like "*filament_vision_server*" -or $_.CommandLine -like "*filament-vision-server*") -and
+            ($_.CommandLine -like "*spoolwarden_vision_server*" -or $_.CommandLine -like "*spoolwarden-vision-server*") -and
             $_.CommandLine -like "*serve*" -and
             $_.CommandLine.ToLowerInvariant().Contains($normRoot)
         } | ForEach-Object {
@@ -64,14 +64,14 @@ function Stop-FilamentServerProcess {
 }
 
 if ($Uninstall) {
-    Write-Host "[install.ps1] Uninstalling filament-vision-server from $TargetPrefix..."
+    Write-Host "[install.ps1] Uninstalling spoolwarden-vision-server from $TargetPrefix..."
     Stop-FilamentServerProcess -RootDir $TargetPrefix
 
     try {
-        $task = Get-ScheduledTask -TaskName "FilamentVisionServer" -ErrorAction SilentlyContinue
+        $task = Get-ScheduledTask -TaskName "SpoolwardenVisionServer" -ErrorAction SilentlyContinue
         if ($task) {
-            Unregister-ScheduledTask -TaskName "FilamentVisionServer" -Confirm:$false -ErrorAction SilentlyContinue
-            Write-Host "[install.ps1] Removed Scheduled Task 'FilamentVisionServer'."
+            Unregister-ScheduledTask -TaskName "SpoolwardenVisionServer" -Confirm:$false -ErrorAction SilentlyContinue
+            Write-Host "[install.ps1] Removed Scheduled Task 'SpoolwardenVisionServer'."
         }
     } catch {
         # Ignore if scheduled tasks unavailable
@@ -440,12 +440,12 @@ function Ensure-ModelAssets {
             return $DefaultModelsDir
         }
 
-        if ($env:FILAMENT_VISION_SERVER_ASSETS_URL) {
-            $assetsUrl = $env:FILAMENT_VISION_SERVER_ASSETS_URL.Trim()
+        if ($env:SPOOLWARDEN_VISION_SERVER_ASSETS_URL) {
+            $assetsUrl = $env:SPOOLWARDEN_VISION_SERVER_ASSETS_URL.Trim()
             if ($assetsUrl -notmatch '^https://' -and $assetsUrl -notmatch '^http://(127\.0\.0\.1|localhost)(:\d+)?/') {
-                throw "Refusing insecure non-HTTPS FILAMENT_VISION_SERVER_ASSETS_URL: $assetsUrl"
+                throw "Refusing insecure non-HTTPS SPOOLWARDEN_VISION_SERVER_ASSETS_URL: $assetsUrl"
             }
-            $zipTmp = Join-Path $env:TEMP "filament_vision_models.zip"
+            $zipTmp = Join-Path $env:TEMP "spoolwarden_vision_models.zip"
             try {
                 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
                 Write-Host "[install.ps1] Downloading model assets from ${assetsUrl}..."
@@ -465,7 +465,7 @@ function Ensure-ModelAssets {
         }
 
         if (-not $IsInteractive) {
-            throw "Required CPU model files missing under $DefaultModelsDir. Ensure bundled models/ exists or set FILAMENT_VISION_SERVER_ASSETS_URL."
+            throw "Required CPU model files missing under $DefaultModelsDir. Ensure bundled models/ exists or set SPOOLWARDEN_VISION_SERVER_ASSETS_URL."
         }
 
         Write-Host ""
@@ -475,7 +475,7 @@ function Ensure-ModelAssets {
             exit 1
         }
         if ($ans -match '^https://' -or $ans -match '^http://(127\.0\.0\.1|localhost)(:\d+)?/') {
-            $zipTmp = Join-Path $env:TEMP "filament_vision_models.zip"
+            $zipTmp = Join-Path $env:TEMP "spoolwarden_vision_models.zip"
             try {
                 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
                 Invoke-WebRequest -Uri $ans -OutFile $zipTmp -UseBasicParsing
@@ -514,7 +514,7 @@ $SourceModelsDir = Ensure-ModelAssets -DefaultModelsDir (Join-Path $ProjectRoot 
 $venvDir = Join-Path $TargetPrefix ".venv"
 $venvPy = Join-Path $venvDir "Scripts\python.exe"
 $venvPip = Join-Path $venvDir "Scripts\pip.exe"
-$venvCli = Join-Path $venvDir "Scripts\filament-vision-server.exe"
+$venvCli = Join-Path $venvDir "Scripts\spoolwarden-vision-server.exe"
 
 if (-not (Test-Path $TargetPrefix)) {
     New-Item -ItemType Directory -Path $TargetPrefix -Force | Out-Null
@@ -703,14 +703,14 @@ if ($upgradeDetected) {
 }
 
 $savedEnvVars = @{}
-foreach ($envName in @("FILAMENT_VISION_SERVER_TOKEN", "FILAMENT_KIT_VISION_TOKEN", "FILAMENT_VISION_SERVER_FEEDBACK_ENDPOINT", "FILAMENT_KIT_VISION_FEEDBACK_ENDPOINT")) {
+foreach ($envName in @("SPOOLWARDEN_VISION_SERVER_TOKEN", "FILAMENT_KIT_VISION_TOKEN", "SPOOLWARDEN_VISION_SERVER_FEEDBACK_ENDPOINT", "FILAMENT_KIT_VISION_FEEDBACK_ENDPOINT")) {
     $savedEnvVars[$envName] = [Environment]::GetEnvironmentVariable($envName, "Process")
     [Environment]::SetEnvironmentVariable($envName, $null, "Process")
 }
 try {
-    $env:FILAMENT_VISION_SERVER_HOME = $TargetPrefix
-    $env:FILAMENT_VISION_SERVER_STATE_DIR = $TargetStateDir
-    & $venvPy -m filament_vision_server.service.cli config --tier $Tier --host $Bind --port $Port | Out-Null
+    $env:SPOOLWARDEN_VISION_SERVER_HOME = $TargetPrefix
+    $env:SPOOLWARDEN_VISION_SERVER_STATE_DIR = $TargetStateDir
+    & $venvPy -m spoolwarden_vision_server.service.cli config --tier $Tier --host $Bind --port $Port | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "Failed to write service_config.xml." }
 } finally {
     foreach ($envName in $savedEnvVars.Keys) {
@@ -722,12 +722,12 @@ Set-Content -Path (Join-Path $TargetPrefix ".installed") -Value "0.3.1" -Encodin
 
 if ($RegisterStartup) {
     try {
-        $taskCmdArgs = "/c set `"FILAMENT_VISION_SERVER_HOME=$TargetPrefix`" && set `"FILAMENT_VISION_SERVER_STATE_DIR=$TargetStateDir`" && `"$venvCli`" serve"
+        $taskCmdArgs = "/c set `"SPOOLWARDEN_VISION_SERVER_HOME=$TargetPrefix`" && set `"SPOOLWARDEN_VISION_SERVER_STATE_DIR=$TargetStateDir`" && `"$venvCli`" serve"
         $action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument $taskCmdArgs -WorkingDirectory $TargetPrefix
         $trigger = New-ScheduledTaskTrigger -AtLogOn
         $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable
-        Register-ScheduledTask -TaskName "FilamentVisionServer" -Action $action -Trigger $trigger -Settings $settings -Force | Out-Null
-        Write-Host "[install.ps1] Registered logon Scheduled Task 'FilamentVisionServer'."
+        Register-ScheduledTask -TaskName "SpoolwardenVisionServer" -Action $action -Trigger $trigger -Settings $settings -Force | Out-Null
+        Write-Host "[install.ps1] Registered logon Scheduled Task 'SpoolwardenVisionServer'."
     } catch {
         Write-Warning "[install.ps1] Could not register Scheduled Task: $_"
     }
@@ -743,7 +743,7 @@ if ($Start) {
     $errLog = Join-Path $TargetPrefix "data\logs\server.err.log"
     Write-Host "[install.ps1] Starting background server on ${baseUrl}..."
     $proc = Start-Process -FilePath $venvPy `
-        -ArgumentList @("-m", "filament_vision_server.service.cli", "serve") `
+        -ArgumentList @("-m", "spoolwarden_vision_server.service.cli", "serve") `
         -WorkingDirectory $TargetPrefix `
         -WindowStyle Hidden `
         -RedirectStandardOutput $outLog `

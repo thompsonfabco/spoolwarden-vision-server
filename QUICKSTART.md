@@ -1,19 +1,19 @@
-# Filament Vision Server — User QuickStart Guide (`v0.3.1`)
+# Spoolwarden Vision Server — User QuickStart Guide (`v0.3.1`)
 
-Welcome to **Filament Vision Server**! This guide takes you from downloading a release archive to recognizing your first filament spools, submitting training corrections, and exporting your inventory.
+Welcome to **Spoolwarden Vision Server**! This guide takes you from downloading a release archive to recognizing your first filament spools, submitting training corrections, and exporting your inventory.
 
 ---
 
 ## 1. Choose & Download Your Package
 
-Download the archive for your operating system from the [GitHub Releases page](https://github.com/thompsonfabco/filament-vision-server/releases/latest) (current release: [`v0.3.1`](https://github.com/thompsonfabco/filament-vision-server/releases/tag/v0.3.1)):
+Download the archive for your operating system from the [GitHub Releases page](https://github.com/thompsonfabco/spoolwarden-vision-server/releases/latest) (current release: [`v0.3.1`](https://github.com/thompsonfabco/spoolwarden-vision-server/releases/tag/v0.3.1)):
 
 | Platform | Package File | Size | Includes | Best For |
 | :--- | :--- | :---: | :--- | :--- |
-| **Windows (x64)** | `filament-vision-server-0.3.1-windows.zip` | ~316 MB | CPU ONNX tier + GPU VLM LoRA adapter | Windows 10/11 PCs with an NVIDIA CUDA GPU (`>= 8 GB` VRAM) |
-| **Windows (x64, CPU-Only)** | `filament-vision-server-0.3.1-windows-cpu.zip` | ~146 MB | CPU ONNX tier only | Any Windows 10/11 PC, laptop, or mini-PC without an NVIDIA GPU |
-| **Linux (x86_64)** | `filament-vision-server-0.3.1-linux.tar.gz` | ~316 MB | CPU ONNX tier + GPU VLM LoRA adapter | Linux desktops/servers with an NVIDIA CUDA GPU (`>= 8 GB` VRAM) |
-| **Linux (x86_64, CPU-Only)** | `filament-vision-server-0.3.1-linux-cpu.tar.gz` | ~146 MB | CPU ONNX tier only | Headless servers, containers, WSL, or PCs without a discrete GPU |
+| **Windows (x64)** | `spoolwarden-vision-server-0.3.1-windows.zip` | ~316 MB | CPU ONNX tier + GPU VLM LoRA adapter | Windows 10/11 PCs with an NVIDIA CUDA GPU (`>= 8 GB` VRAM) |
+| **Windows (x64, CPU-Only)** | `spoolwarden-vision-server-0.3.1-windows-cpu.zip` | ~146 MB | CPU ONNX tier only | Any Windows 10/11 PC, laptop, or mini-PC without an NVIDIA GPU |
+| **Linux (x86_64)** | `spoolwarden-vision-server-0.3.1-linux.tar.gz` | ~316 MB | CPU ONNX tier + GPU VLM LoRA adapter | Linux desktops/servers with an NVIDIA CUDA GPU (`>= 8 GB` VRAM) |
+| **Linux (x86_64, CPU-Only)** | `spoolwarden-vision-server-0.3.1-linux-cpu.tar.gz` | ~146 MB | CPU ONNX tier only | Headless servers, containers, WSL, or PCs without a discrete GPU |
 
 > [!TIP]
 > **Which tier should you pick?**
@@ -28,7 +28,7 @@ Download the archive for your operating system from the [GitHub Releases page](h
 
 ### Windows (One-Click Installer)
 
-1. Right-click the downloaded `.zip` file and click **Extract All...** to a folder such as `C:\filament-vision-server`.
+1. Right-click the downloaded `.zip` file and click **Extract All...** to a folder such as `C:\spoolwarden-vision-server`.
 2. Open the extracted folder and **double-click `install.bat`**.
 
 What the Windows installer handles for you automatically:
@@ -62,26 +62,26 @@ What the Windows installer handles for you automatically:
 
 1. Extract the `.tar.gz` archive and enter the extracted directory:
    ```bash
-   tar -xzf filament-vision-server-0.3.1-linux-cpu.tar.gz
-   cd filament-vision-server-0.3.1-linux-cpu
+   tar -xzf spoolwarden-vision-server-0.3.1-linux-cpu.tar.gz
+   cd spoolwarden-vision-server-0.3.1-linux-cpu
    ```
    *(Replace `-linux-cpu` with `-linux` if you downloaded the Full bundle.)*
 
 2. Run the installer:
-   - **Recommended — System Service (`systemd` under `/opt/filament-vision-server`):**
+   - **Recommended — System Service (`systemd` under `/opt/spoolwarden-vision-server`):**
      ```bash
      sudo bash install/install.sh
      ```
-   - **No-`root` / WSL / Container Install (under `$HOME/filament-vision-server`):**
+   - **No-`root` / WSL / Container Install (under `$HOME/spoolwarden-vision-server`):**
      ```bash
-     bash install/install.sh --no-systemd --prefix "$HOME/filament-vision-server"
-     "$HOME/filament-vision-server/start_server.sh"
+     bash install/install.sh --no-systemd --prefix "$HOME/spoolwarden-vision-server"
+     "$HOME/spoolwarden-vision-server/start_server.sh"
      ```
 
 What `install/install.sh` handles automatically:
 - Installs any missing OS libraries (`python3-venv`, `python3-pip`, `curl`, `ca-certificates`, `libglib-2.0`, `libgomp1`, `libGL`, `libheif`) via `apt-get`, `dnf`, `yum`, `pacman`, `zypper`, or `apk`.
 - Bootstraps standalone **`uv` + Python 3.12** automatically if your distro does not ship Python 3.10–3.14.
-- Installs Python packages into `.venv`, verifies `models/cpu/` (and `models/gpu/` if applicable), registers `filament-vision-server.service` (when `systemd` is active), starts the server, and polls `http://127.0.0.1:7920/v1/health` until ready.
+- Installs Python packages into `.venv`, verifies `models/cpu/` (and `models/gpu/` if applicable), registers `spoolwarden-vision-server.service` (when `systemd` is active), starts the server, and polls `http://127.0.0.1:7920/v1/health` until ready.
 
 #### Useful Linux Options & Commands
 
@@ -91,21 +91,21 @@ What `install/install.sh` handles automatically:
   ```
 - **Manage the `systemd` service:**
   ```bash
-  sudo systemctl status filament-vision-server
-  sudo systemctl restart filament-vision-server
-  sudo systemctl stop filament-vision-server
-  journalctl -u filament-vision-server -f
+  sudo systemctl status spoolwarden-vision-server
+  sudo systemctl restart spoolwarden-vision-server
+  sudo systemctl stop spoolwarden-vision-server
+  journalctl -u spoolwarden-vision-server -f
   ```
 - **Stop user-space (`--no-systemd`) server:**
   ```bash
-  "$HOME/filament-vision-server/stop_server.sh"
+  "$HOME/spoolwarden-vision-server/stop_server.sh"
   ```
 
 ---
 
 ## 3. Scan & Recognize Spools in the Web UI
 
-1. Open **`http://127.0.0.1:7920/`** in any browser (or `http://<your-server-ip>:7920/` from your phone when bound to `0.0.0.0` — same-origin LAN Web UI requests matching the `Host` header are permitted automatically, or set `FILAMENT_VISION_SERVER_ALLOWED_ORIGINS` for external web origins).
+1. Open **`http://127.0.0.1:7920/`** in any browser (or `http://<your-server-ip>:7920/` from your phone when bound to `0.0.0.0` — same-origin LAN Web UI requests matching the `Host` header are permitted automatically, or set `SPOOLWARDEN_VISION_SERVER_ALLOWED_ORIGINS` for external web origins).
 2. Confirm the top-right status pill turns green (`OK v0.3.1 (CPU mode)` or `OK v0.3.1 (GPU ready)`).
 3. Under **1. Spool / Box Photo**:
    - Drag and drop up to **8 photos**, click **Choose Files**, or tap **Take Photo** on a phone/tablet.
@@ -172,16 +172,16 @@ To submit a correction:
 ## 6. Troubleshooting & FAQ
 
 ### How do I scan directly from my phone?
-Set an API token (`FILAMENT_VISION_SERVER_TOKEN`) before exposing the server beyond `127.0.0.1`, start or configure the server to listen on `0.0.0.0` (all network interfaces), and allow TCP port `7920` through your firewall:
+Set an API token (`SPOOLWARDEN_VISION_SERVER_TOKEN`) before exposing the server beyond `127.0.0.1`, start or configure the server to listen on `0.0.0.0` (all network interfaces), and allow TCP port `7920` through your firewall:
 - **Windows (run PowerShell as Administrator):**
   ```powershell
-  $env:FILAMENT_VISION_SERVER_TOKEN = "choose-a-strong-random-token"
+  $env:SPOOLWARDEN_VISION_SERVER_TOKEN = "choose-a-strong-random-token"
   powershell -ExecutionPolicy Bypass -File .\install\install.ps1 -Bind 0.0.0.0 -Start
-  New-NetFirewallRule -DisplayName "Filament Vision Server" -Direction Inbound -Protocol TCP -LocalPort 7920 -Action Allow
+  New-NetFirewallRule -DisplayName "Spoolwarden Vision Server" -Direction Inbound -Protocol TCP -LocalPort 7920 -Action Allow
   ```
 - **Linux (`ufw`):**
   ```bash
-  export FILAMENT_VISION_SERVER_TOKEN="choose-a-strong-random-token"
+  export SPOOLWARDEN_VISION_SERVER_TOKEN="choose-a-strong-random-token"
   sudo -E bash install/install.sh --bind 0.0.0.0
   sudo ufw allow 7920/tcp
   ```
@@ -191,14 +191,14 @@ Then open `http://<desktop-lan-ip>:7920/` on your phone, paste your token into t
 Pass a custom port to the installer or CLI:
 - **Windows:** `powershell -ExecutionPolicy Bypass -File .\install\install.ps1 -Port 8080 -Start -OpenBrowser`
 - **Linux:** `sudo bash install/install.sh --port 8080`
-- **CLI:** `filament-vision-server serve --port 8080`
+- **CLI:** `spoolwarden-vision-server serve --port 8080`
 
 ### My GPU doesn't have enough VRAM or CUDA is failing — how do I force CPU mode?
 Switch to CPU mode from the **Inference Tier** dropdown in the Web UI (`cpu (Fast ONNX + OCR)`), or lock the server default:
 ```bash
-filament-vision-server config --tier cpu
+spoolwarden-vision-server config --tier cpu
 ```
-Or set `FILAMENT_VISION_SERVER_CPU_ONLY=1` before starting the server.
+Or set `SPOOLWARDEN_VISION_SERVER_CPU_ONLY=1` before starting the server.
 
 ### How do I verify the integrity and authenticity of a downloaded release?
 Every release ships with `SHA256SUMS`, `SHA256SUMS.sig`, and `manifest.json`. From an unpacked bundle directory (or repo root):
@@ -217,6 +217,6 @@ adkFwUZin7sdhZJ1fdr9sOn8BtFIFuiFHrm2d5O0TPU=
 ### Where are logs, configs, and feedback stored?
 - **Config:** `configs/service_config.xml`
 - **Logs (Windows `install.ps1` / `start_server.bat`):** `data/logs/server.out.log` and `data/logs/server.err.log`
-- **Logs (Linux `systemd`):** `journalctl -u filament-vision-server`
+- **Logs (Linux `systemd`):** `journalctl -u spoolwarden-vision-server`
 - **Logs (Linux `--no-systemd`):** `<prefix>/data/server.log`
 - **Queued Feedback (before upload/clear):** `data/feedback_queue/`

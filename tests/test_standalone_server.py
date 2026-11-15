@@ -1,4 +1,4 @@
-"""End-to-end tests for the standalone filament-vision-server HTTP daemon & Web UI."""
+"""End-to-end tests for the standalone spoolwarden-vision-server HTTP daemon & Web UI."""
 from __future__ import annotations
 
 import base64
@@ -14,8 +14,8 @@ from pathlib import Path
 import pytest
 from PIL import Image, ImageDraw
 
-from filament_vision_server.service import daemon as daemon_mod
-from filament_vision_server.service import feedback as feedback_mod
+from spoolwarden_vision_server.service import daemon as daemon_mod
+from spoolwarden_vision_server.service import feedback as feedback_mod
 
 
 def _make_sample_spool_jpeg() -> bytes:
@@ -107,7 +107,7 @@ def test_health_and_cors_preflight(standalone_server):
     assert status == 200
     assert "access-control-allow-origin" not in hdrs
     payload = json.loads(raw.decode("utf-8"))
-    assert payload["service"] == "filament-vision-server"
+    assert payload["service"] == "spoolwarden-vision-server"
     assert payload["module_version"] == "0.3.1"
     assert payload["status"] == "ok"
     assert payload["tiers"]["cpu"]["usable"] is True
@@ -398,8 +398,8 @@ def test_cors_origin_protection(standalone_server, monkeypatch):
     assert st_del == 403
     assert json.loads(raw_del.decode("utf-8"))["code"] == "forbidden_origin"
 
-    # Explicit FILAMENT_VISION_SERVER_ALLOWED_ORIGINS opt-in works
-    monkeypatch.setenv("FILAMENT_VISION_SERVER_ALLOWED_ORIGINS", "https://spoolman.lan:7912")
+    # Explicit SPOOLWARDEN_VISION_SERVER_ALLOWED_ORIGINS opt-in works
+    monkeypatch.setenv("SPOOLWARDEN_VISION_SERVER_ALLOWED_ORIGINS", "https://spoolman.lan:7912")
     st_ok, hdr_ok, _ = _http_request_any(
         f"{base_url}/v1/read",
         method="OPTIONS",
@@ -663,7 +663,7 @@ def test_feedback_fail_closed_delete_many_and_ingest_empty_xml(tmp_path):
 
 
 def test_catalog_matcher_unknown_color_keeps_visual_hex():
-    from filament_vision_server.catalog.matcher import CatalogMatcher
+    from spoolwarden_vision_server.catalog.matcher import CatalogMatcher
 
     matcher = CatalogMatcher()
     cname, chex, cfam, hsrc = matcher.resolve_color(
@@ -717,7 +717,7 @@ def test_config_endpoint_ssrf_and_unauthenticated_override_blocked(standalone_se
 
 
 def test_decompression_bomb_and_zip_ingest_limits(standalone_server, tmp_path, monkeypatch):
-    from filament_vision_server.cpu_tier.pipeline import CPUHybridPipeline
+    from spoolwarden_vision_server.cpu_tier.pipeline import CPUHybridPipeline
 
     base_url, _, _ = standalone_server
     bomb_png = _make_oversized_png_bytes(12000, 12000)
@@ -749,10 +749,10 @@ def test_decompression_bomb_and_zip_ingest_limits(standalone_server, tmp_path, m
 
 def test_unlabeled_color_preserves_estimate_and_windings_refinement(monkeypatch):
     import numpy as np
-    from filament_vision_server.catalog.matcher import CatalogMatcher
-    from filament_vision_server.cpu_tier import pipeline as cpu_pipe_mod
-    from filament_vision_server.data_engine.auto_labeler import parse_ocr_heuristic
-    from filament_vision_server.xml_io import BoundingBox
+    from spoolwarden_vision_server.catalog.matcher import CatalogMatcher
+    from spoolwarden_vision_server.cpu_tier import pipeline as cpu_pipe_mod
+    from spoolwarden_vision_server.data_engine.auto_labeler import parse_ocr_heuristic
+    from spoolwarden_vision_server.xml_io import BoundingBox
 
     blank = np.zeros((200, 200, 3), dtype=np.uint8)
     item, _ = parse_ocr_heuristic([], blank, CatalogMatcher(), is_spool=True)
@@ -783,7 +783,7 @@ def test_visual_vendor_confidence_and_gpu_available_in_cpu_tier(monkeypatch):
     import sys
     import types
     import numpy as np
-    from filament_vision_server.cpu_tier import pipeline as cpu_pipe_mod
+    from spoolwarden_vision_server.cpu_tier import pipeline as cpu_pipe_mod
 
     pipe = cpu_pipe_mod.CPUHybridPipeline()
     img = np.zeros((200, 200, 3), dtype=np.uint8)
@@ -812,7 +812,7 @@ def test_visual_vendor_confidence_and_gpu_available_in_cpu_tier(monkeypatch):
 
 
 def test_catalog_matcher_generic_material_product_line_ranking():
-    from filament_vision_server.catalog.matcher import CatalogMatcher
+    from spoolwarden_vision_server.catalog.matcher import CatalogMatcher
 
     matcher = CatalogMatcher()
     bambu = matcher.match_product_line("Bambu Lab", "PLA", "PLA")
@@ -858,8 +858,8 @@ def test_web_ui_and_playground_scripts_pass_node_check(tmp_path):
     import re
     import shutil
     import subprocess
-    from filament_vision_server.service.playground_ui import PLAYGROUND_HTML
-    from filament_vision_server.service.web_ui import STANDALONE_WEB_UI_HTML
+    from spoolwarden_vision_server.service.playground_ui import PLAYGROUND_HTML
+    from spoolwarden_vision_server.service.web_ui import STANDALONE_WEB_UI_HTML
 
     node_bin = shutil.which("node")
     assert node_bin is not None, "Node.js is required to syntax-check Web UI and Playground JS"
@@ -888,13 +888,13 @@ def test_xml_io_matcher_color_lab_and_pipelines(tmp_path, monkeypatch):
     import sys
     import xml.etree.ElementTree as ET
     import numpy as np
-    from filament_vision_server import xml_io as xml_io_mod
-    from filament_vision_server.catalog.library_sync import normalize_bed_range
-    from filament_vision_server.catalog.matcher import CatalogMatcher
-    from filament_vision_server.cpu_tier.color_lab import extract_filament_color
-    from filament_vision_server.cpu_tier.pipeline import apply_note_to_item, merge_prediction_item
-    from filament_vision_server.data_engine.auto_labeler import parse_ocr_heuristic
-    from filament_vision_server.evaluation.benchmark import _eval_samples
+    from spoolwarden_vision_server import xml_io as xml_io_mod
+    from spoolwarden_vision_server.catalog.library_sync import normalize_bed_range
+    from spoolwarden_vision_server.catalog.matcher import CatalogMatcher
+    from spoolwarden_vision_server.cpu_tier.color_lab import extract_filament_color
+    from spoolwarden_vision_server.cpu_tier.pipeline import apply_note_to_item, merge_prediction_item
+    from spoolwarden_vision_server.data_engine.auto_labeler import parse_ocr_heuristic
+    from spoolwarden_vision_server.evaluation.benchmark import _eval_samples
 
     assert xml_io_mod.parse_temp_range("215") == (215, 215)
     assert xml_io_mod.parse_temp_range("190\u2013220") == (190, 220)
@@ -913,7 +913,7 @@ def test_xml_io_matcher_color_lab_and_pipelines(tmp_path, monkeypatch):
     fake_prefix = tmp_path / "prefix"
     (fake_prefix / "configs").mkdir(parents=True)
     (fake_prefix / "data" / "catalog").mkdir(parents=True)
-    monkeypatch.delenv("FILAMENT_VISION_SERVER_HOME", raising=False)
+    monkeypatch.delenv("SPOOLWARDEN_VISION_SERVER_HOME", raising=False)
     monkeypatch.delenv("FILAMENT_KIT_VISION_HOME", raising=False)
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(xml_io_mod, "__file__", str(tmp_path / "site-packages" / "pkg" / "xml_io.py"))
@@ -989,7 +989,7 @@ def test_config_cli_validation_revise_and_updater_hardening(standalone_server, t
     import xml.etree.ElementTree as ET
     from urllib.parse import urlparse
     from PIL import Image
-    from filament_vision_server.service import updater as updater_mod
+    from spoolwarden_vision_server.service import updater as updater_mod
 
     base_url, cfg_path, _ = standalone_server
 
@@ -997,16 +997,16 @@ def test_config_cli_validation_revise_and_updater_hardening(standalone_server, t
     cfg_file = tmp_path / "isolated_cfg.xml"
     daemon_mod.save_service_config({"tier": "cpu", "feedback_opt_in": False, "feedback_endpoint": ""}, path=cfg_file)
     assert daemon_mod.load_service_config(path=cfg_file, include_env=False)["feedback_endpoint"] == ""
-    monkeypatch.setenv("FILAMENT_VISION_SERVER_TOKEN", "env-secret")
-    monkeypatch.setenv("FILAMENT_VISION_SERVER_FEEDBACK_ENDPOINT", "https://override.example/up")
+    monkeypatch.setenv("SPOOLWARDEN_VISION_SERVER_TOKEN", "env-secret")
+    monkeypatch.setenv("SPOOLWARDEN_VISION_SERVER_FEEDBACK_ENDPOINT", "https://override.example/up")
     cfg_no_env = daemon_mod.load_service_config(path=cfg_file, include_env=False)
     cfg_with_env = daemon_mod.load_service_config(path=cfg_file, include_env=True)
     assert cfg_no_env["token"] == ""
     assert cfg_no_env["feedback_endpoint"] == ""
     assert cfg_with_env["token"] == "env-secret"
     assert cfg_with_env["feedback_endpoint"] == "https://override.example/up"
-    monkeypatch.delenv("FILAMENT_VISION_SERVER_TOKEN", raising=False)
-    monkeypatch.delenv("FILAMENT_VISION_SERVER_FEEDBACK_ENDPOINT", raising=False)
+    monkeypatch.delenv("SPOOLWARDEN_VISION_SERVER_TOKEN", raising=False)
+    monkeypatch.delenv("SPOOLWARDEN_VISION_SERVER_FEEDBACK_ENDPOINT", raising=False)
 
     # Strict Content-Type (415) and api_version major mismatch (400)
     parsed = urlparse(base_url)

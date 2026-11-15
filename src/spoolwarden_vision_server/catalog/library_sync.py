@@ -12,7 +12,11 @@ from typing import Any
 
 from ..xml_io import CONFIGS_DIR, DATA_DIR, parse_xml_file, write_xml_atomic
 
-DEFAULT_LIBRARY_ROOT = Path(os.environ.get("FILAMENT_VISION_SERVER_LIBRARY_ROOT", "filament-library"))
+DEFAULT_LIBRARY_ROOT = Path(
+    os.environ.get("SPOOLWARDEN_VISION_SERVER_LIBRARY_ROOT")
+    or os.environ.get("FILAMENT_VISION_SERVER_LIBRARY_ROOT")
+    or "filament-library"
+)
 MASTER_CATALOG_XML = DATA_DIR / "catalog" / "filament_catalog.xml"
 
 # Official manufacturer color palettes with (Color Name, 6-digit Hex, Color Family)

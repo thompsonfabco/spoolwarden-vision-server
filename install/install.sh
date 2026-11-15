@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Standalone Linux installer for filament-vision-server (v0.3.1)
+# Standalone Linux installer for spoolwarden-vision-server (v0.3.1)
 # Usage:
 #   sudo bash install/install.sh [options]
 # Options:
@@ -9,7 +9,7 @@ set -euo pipefail
 #   --port <port>             HTTP listen port (default: 7920)
 #   --bind <ip>               Bind address (default: 127.0.0.1)
 #   --user <username>         Service user for systemd unit (default: current sudo user or root)
-#   --prefix <dir>            Install prefix (default: /opt/filament-vision-server)
+#   --prefix <dir>            Install prefix (default: /opt/spoolwarden-vision-server)
 #   --state-dir <dir>         External state folder for config, token, keys & queue
 #   --assets <dir>            Models directory (default: ./models)
 #   --with-gpu                Install optional PyTorch/Transformers/PEFT GPU extras
@@ -25,8 +25,8 @@ PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 TIER="auto"
 PORT="7920"
 BIND="127.0.0.1"
-SERVICE_USER="filament-vision-server"
-PREFIX="/opt/filament-vision-server"
+SERVICE_USER="spoolwarden-vision-server"
+PREFIX="/opt/spoolwarden-vision-server"
 STATE_DIR=""
 ASSETS=""
 WITH_GPU=0
@@ -76,9 +76,9 @@ done
 
 if [[ -z "${STATE_DIR}" ]]; then
   if [[ "$(id -u)" -eq 0 ]]; then
-    STATE_DIR="/var/lib/filament-vision-server"
+    STATE_DIR="/var/lib/spoolwarden-vision-server"
   else
-    STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/filament-vision-server"
+    STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/spoolwarden-vision-server"
   fi
 fi
 
@@ -133,11 +133,11 @@ prompt_manual_dependency() {
   return 0
 }
 
-SERVICE_NAME="filament-vision-server"
+SERVICE_NAME="spoolwarden-vision-server"
 SYSTEMD_UNIT_PATH="/etc/systemd/system/${SERVICE_NAME}.service"
 
 if [[ "${UNINSTALL}" -eq 1 ]]; then
-  echo "[install.sh] Uninstalling filament-vision-server from ${PREFIX}..."
+  echo "[install.sh] Uninstalling spoolwarden-vision-server from ${PREFIX}..."
   if command -v systemctl >/dev/null 2>&1; then
     if systemctl list-unit-files | grep -q "^${SERVICE_NAME}\.service"; then
       systemctl stop "${SERVICE_NAME}.service" || true
@@ -151,14 +151,14 @@ if [[ "${UNINSTALL}" -eq 1 ]]; then
   if [[ -f "${PREFIX}/stop_server.sh" ]]; then
     bash "${PREFIX}/stop_server.sh" || true
   fi
-  for bin_name in filament-vision-server spool-server; do
+  for bin_name in spoolwarden-vision-server spool-server; do
     link_path="/usr/local/bin/${bin_name}"
     if [[ -L "${link_path}" ]]; then
       target="$(readlink -f "${link_path}" || true)"
       if [[ "${target}" == "${PREFIX}"* ]]; then
         rm -f "${link_path}"
       fi
-    elif [[ -f "${link_path}" ]] && grep -qF "FILAMENT_VISION_SERVER_HOME=\"${PREFIX}\"" "${link_path}" 2>/dev/null; then
+    elif [[ -f "${link_path}" ]] && grep -qF "SPOOLWARDEN_VISION_SERVER_HOME=\"${PREFIX}\"" "${link_path}" 2>/dev/null; then
       rm -f "${link_path}"
     fi
   done
@@ -192,15 +192,15 @@ if [[ "${UNINSTALL}" -eq 1 ]]; then
       rmdir "${PREFIX}/data" 2>/dev/null || true
       rmdir "${PREFIX}" 2>/dev/null || true
     fi
-    rm -rf /etc/filament-vision-server
+    rm -rf /etc/spoolwarden-vision-server
     echo "[install.sh] Purged state folder ${STATE_DIR} (${WAITING_COUNT} waiting correction(s) removed)."
   else
-    if [[ -d /etc/filament-vision-server ]]; then
-      rmdir /etc/filament-vision-server 2>/dev/null || true
+    if [[ -d /etc/spoolwarden-vision-server ]]; then
+      rmdir /etc/spoolwarden-vision-server 2>/dev/null || true
     fi
     echo "[install.sh] Preserved state folder ${STATE_DIR} (config, token, keys, and ${WAITING_COUNT} waiting correction(s)). Re-run with --uninstall --purge to remove it."
   fi
-  for acct_marker in /etc/filament-vision-server/.created_service_account "${STATE_DIR}/.created_service_account"; do
+  for acct_marker in /etc/spoolwarden-vision-server/.created_service_account "${STATE_DIR}/.created_service_account"; do
     if [[ -f "${acct_marker}" ]]; then
       REM_USER="$(sed -n 's/^user=//p' "${acct_marker}" | head -n1)"
       REM_GROUP="$(sed -n 's/^group=//p' "${acct_marker}" | head -n1)"
@@ -213,8 +213,8 @@ if [[ "${UNINSTALL}" -eq 1 ]]; then
       fi
     fi
   done
-  if [[ -d /etc/filament-vision-server ]]; then
-    rmdir /etc/filament-vision-server 2>/dev/null || true
+  if [[ -d /etc/spoolwarden-vision-server ]]; then
+    rmdir /etc/spoolwarden-vision-server 2>/dev/null || true
   fi
   echo "[install.sh] Uninstalled cleanly."
   exit 0
@@ -539,15 +539,15 @@ ensure_model_assets() {
     if [[ -n "${ASSETS}" ]] && models_present_in_dir "${ASSETS}"; then
       return 0
     fi
-    if [[ -n "${FILAMENT_VISION_SERVER_ASSETS_URL:-}" ]]; then
+    if [[ -n "${SPOOLWARDEN_VISION_SERVER_ASSETS_URL:-}" ]]; then
       local dl_target="${PROJECT_DIR}/models"
-      if download_and_extract_assets_url "${FILAMENT_VISION_SERVER_ASSETS_URL}" "${dl_target}"; then
+      if download_and_extract_assets_url "${SPOOLWARDEN_VISION_SERVER_ASSETS_URL}" "${dl_target}"; then
         ASSETS="${dl_target}"
         return 0
       fi
     fi
     if ! is_interactive; then
-      echo "[install.sh] ERROR: Required CPU model weights missing (detector_rfdetr_n.onnx, visual_multihead.onnx, text_parser.npz). Pass --assets <dir> or set FILAMENT_VISION_SERVER_ASSETS_URL." >&2
+      echo "[install.sh] ERROR: Required CPU model weights missing (detector_rfdetr_n.onnx, visual_multihead.onnx, text_parser.npz). Pass --assets <dir> or set SPOOLWARDEN_VISION_SERVER_ASSETS_URL." >&2
       exit 1
     fi
     echo "" >&2
@@ -688,7 +688,7 @@ if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then
 fi
 
 if [[ "${WITH_GPU}" -eq 1 ]]; then
-  echo "[install.sh] Installing filament-vision-server[gpu]..."
+  echo "[install.sh] Installing spoolwarden-vision-server[gpu]..."
   "${VENV_PIP}" install --no-cache-dir "${INSTALL_TARGET}[gpu]"
   if [[ "${HAS_CUDA}" -eq 1 ]]; then
     echo "[install.sh] CUDA GPU extras enabled; switching onnxruntime to onnxruntime-gpu..."
@@ -699,7 +699,7 @@ if [[ "${WITH_GPU}" -eq 1 ]]; then
     fi
   fi
 else
-  echo "[install.sh] Installing filament-vision-server..."
+  echo "[install.sh] Installing spoolwarden-vision-server..."
   "${VENV_PIP}" install --no-cache-dir "${INSTALL_TARGET}"
 fi
 
@@ -823,11 +823,11 @@ if [[ "${UPGRADE_DETECTED}" -eq 1 ]]; then
   echo "[install.sh] Upgrading in place: preserved existing config, token, keys, and feedback queue in ${STATE_DIR}."
 fi
 
-env -u FILAMENT_VISION_SERVER_TOKEN -u FILAMENT_KIT_VISION_TOKEN \
-    -u FILAMENT_VISION_SERVER_FEEDBACK_ENDPOINT -u FILAMENT_KIT_VISION_FEEDBACK_ENDPOINT \
-    FILAMENT_VISION_SERVER_HOME="${PREFIX}" \
-    FILAMENT_VISION_SERVER_STATE_DIR="${STATE_DIR}" \
-    "${VENV_PY}" -m filament_vision_server.service.cli config \
+env -u SPOOLWARDEN_VISION_SERVER_TOKEN -u FILAMENT_KIT_VISION_TOKEN \
+    -u SPOOLWARDEN_VISION_SERVER_FEEDBACK_ENDPOINT -u FILAMENT_KIT_VISION_FEEDBACK_ENDPOINT \
+    SPOOLWARDEN_VISION_SERVER_HOME="${PREFIX}" \
+    SPOOLWARDEN_VISION_SERVER_STATE_DIR="${STATE_DIR}" \
+    "${VENV_PY}" -m spoolwarden_vision_server.service.cli config \
     --tier "${TIER}" --host "${BIND}" --port "${PORT}" >/dev/null
 
 HEALTH_HOST="${BIND}"
@@ -843,18 +843,18 @@ fi
 cat > "${PREFIX}/start_server.sh" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
-export FILAMENT_VISION_SERVER_HOME="${PREFIX}"
-export FILAMENT_VISION_SERVER_STATE_DIR="${STATE_DIR}"
+export SPOOLWARDEN_VISION_SERVER_HOME="${PREFIX}"
+export SPOOLWARDEN_VISION_SERVER_STATE_DIR="${STATE_DIR}"
 PID_FILE="${PREFIX}/server.pid"
 if [[ -f "\${PID_FILE}" ]] && kill -0 "\$(cat "\${PID_FILE}")" 2>/dev/null; then
-  echo "[filament-vision-server] Already running (PID \$(cat "\${PID_FILE}"))."
+  echo "[spoolwarden-vision-server] Already running (PID \$(cat "\${PID_FILE}"))."
   exit 0
 fi
 mkdir -p "${STATE_DIR}"
-nohup "${PREFIX}/.venv/bin/filament-vision-server" serve "\$@" \
+nohup "${PREFIX}/.venv/bin/spoolwarden-vision-server" serve "\$@" \
   >"${STATE_DIR}/server.log" 2>&1 &
 echo \$! > "\${PID_FILE}"
-echo "[filament-vision-server] Started (PID \$!) on http://${HEALTH_HOST_FMT}:${PORT}/"
+echo "[spoolwarden-vision-server] Started (PID \$!) on http://${HEALTH_HOST_FMT}:${PORT}/"
 EOF
 chmod +x "${PREFIX}/start_server.sh"
 
@@ -871,9 +871,9 @@ if [[ -f "\${PID_FILE}" ]]; then
     fi
   fi
   rm -f "\${PID_FILE}"
-  echo "[filament-vision-server] Stopped."
+  echo "[spoolwarden-vision-server] Stopped."
 else
-  echo "[filament-vision-server] No server.pid found under ${PREFIX}."
+  echo "[spoolwarden-vision-server] No server.pid found under ${PREFIX}."
 fi
 EOF
 chmod +x "${PREFIX}/stop_server.sh"
@@ -888,18 +888,18 @@ if [[ "$(id -u)" -eq 0 ]]; then
     CREATED_SVC_USER="${SERVICE_USER}"
   fi
   if [[ -n "${CREATED_SVC_USER}" || -n "${CREATED_SVC_GROUP}" ]]; then
-    mkdir -p /etc/filament-vision-server
-    printf 'user=%s\ngroup=%s\n' "${CREATED_SVC_USER}" "${CREATED_SVC_GROUP}" > /etc/filament-vision-server/.created_service_account
+    mkdir -p /etc/spoolwarden-vision-server
+    printf 'user=%s\ngroup=%s\n' "${CREATED_SVC_USER}" "${CREATED_SVC_GROUP}" > /etc/spoolwarden-vision-server/.created_service_account
     printf 'user=%s\ngroup=%s\n' "${CREATED_SVC_USER}" "${CREATED_SVC_GROUP}" > "${STATE_DIR}/.created_service_account"
   fi
   chown -R "${SERVICE_USER}:${SERVICE_USER}" "${STATE_DIR}"
   chmod 0750 "${STATE_DIR}" 2>/dev/null || true
   if [[ -d /usr/local/bin ]]; then
-    for bin_name in filament-vision-server spool-server; do
+    for bin_name in spoolwarden-vision-server spool-server; do
       cat > "/usr/local/bin/${bin_name}" <<WREOF
 #!/usr/bin/env bash
-export FILAMENT_VISION_SERVER_HOME="${PREFIX}"
-export FILAMENT_VISION_SERVER_STATE_DIR="${STATE_DIR}"
+export SPOOLWARDEN_VISION_SERVER_HOME="${PREFIX}"
+export SPOOLWARDEN_VISION_SERVER_STATE_DIR="${STATE_DIR}"
 exec "${PREFIX}/.venv/bin/${bin_name}" "\$@"
 WREOF
       chmod 0755 "/usr/local/bin/${bin_name}"
@@ -911,14 +911,14 @@ HEALTH_URL="http://${HEALTH_HOST_FMT}:${PORT}/v1/health"
 
 if [[ "${NO_SYSTEMD}" -eq 0 && "$(id -u)" -eq 0 ]] && command -v systemctl >/dev/null 2>&1 && [[ -d /run/systemd/system ]]; then
   echo "[install.sh] Installing systemd service ${SYSTEMD_UNIT_PATH}..."
-  mkdir -p /etc/filament-vision-server
+  mkdir -p /etc/spoolwarden-vision-server
   FVS_UNIT_PREFIX="${PREFIX}" \
   FVS_UNIT_STATE_DIR="${STATE_DIR}" \
   FVS_UNIT_USER="${SERVICE_USER}" \
   FVS_UNIT_BIND="${BIND}" \
   FVS_UNIT_PORT="${PORT}" \
   FVS_UNIT_TIER="${TIER}" \
-  FVS_UNIT_SRC="${SCRIPT_DIR}/systemd/filament-vision-server.service" \
+  FVS_UNIT_SRC="${SCRIPT_DIR}/systemd/spoolwarden-vision-server.service" \
   FVS_UNIT_DST="${SYSTEMD_UNIT_PATH}" \
   "${VENV_PY}" -c 'import os, pathlib
 txt = pathlib.Path(os.environ["FVS_UNIT_SRC"]).read_text(encoding="utf-8")

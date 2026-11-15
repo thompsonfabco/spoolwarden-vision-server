@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  CPU Hybrid Pipeline configuration for filament-vision-server.
+  CPU Hybrid Pipeline configuration for spoolwarden-vision-server.
   All models export to cross-platform ONNX for <150ms CPU inference.
 -->
 <cpu-pipeline version="1">
