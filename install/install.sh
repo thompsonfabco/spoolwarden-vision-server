@@ -82,6 +82,17 @@ if [[ -z "${STATE_DIR}" ]]; then
   fi
 fi
 
+if [[ "$(id -u)" -eq 0 ]]; then
+  LEGACY_STATE_DIR="/var/lib/filament-vision-server"
+  LEGACY_PREFIX="/opt/filament-vision-server"
+  LEGACY_UNIT_PATH="/etc/systemd/system/filament-vision-server.service"
+else
+  LEGACY_STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/filament-vision-server"
+  LEGACY_PREFIX=""
+  LEGACY_UNIT_PATH=""
+fi
+LEGACY_SERVICE_NAME="filament-vision-server"
+
 case "${TIER}" in
   auto|cpu|gpu) ;;
   *)
@@ -139,26 +150,37 @@ SYSTEMD_UNIT_PATH="/etc/systemd/system/${SERVICE_NAME}.service"
 if [[ "${UNINSTALL}" -eq 1 ]]; then
   echo "[install.sh] Uninstalling spoolwarden-vision-server from ${PREFIX}..."
   if command -v systemctl >/dev/null 2>&1; then
-    if systemctl list-unit-files | grep -q "^${SERVICE_NAME}\.service"; then
-      systemctl stop "${SERVICE_NAME}.service" || true
-      systemctl disable "${SERVICE_NAME}.service" || true
-    fi
-    if [[ -f "${SYSTEMD_UNIT_PATH}" ]]; then
-      rm -f "${SYSTEMD_UNIT_PATH}"
+    for unit_name in "${SERVICE_NAME}" "${LEGACY_SERVICE_NAME}"; do
+      if systemctl list-unit-files | grep -q "^${unit_name}\.service"; then
+        systemctl stop "${unit_name}.service" || true
+        systemctl disable "${unit_name}.service" || true
+      fi
+    done
+    UNIT_REMOVED=0
+    for unit_path in "${SYSTEMD_UNIT_PATH}" "${LEGACY_UNIT_PATH}"; do
+      if [[ -n "${unit_path}" && -f "${unit_path}" ]]; then
+        rm -f "${unit_path}"
+        UNIT_REMOVED=1
+      fi
+    done
+    if [[ "${UNIT_REMOVED}" -eq 1 ]]; then
       systemctl daemon-reload || true
     fi
   fi
   if [[ -f "${PREFIX}/stop_server.sh" ]]; then
     bash "${PREFIX}/stop_server.sh" || true
   fi
-  for bin_name in spoolwarden-vision-server spool-server; do
+  if [[ -n "${LEGACY_PREFIX}" && "${LEGACY_PREFIX}" != "${PREFIX}" && -f "${LEGACY_PREFIX}/stop_server.sh" ]]; then
+    bash "${LEGACY_PREFIX}/stop_server.sh" || true
+  fi
+  for bin_name in spoolwarden-vision-server filament-vision-server spool-server; do
     link_path="/usr/local/bin/${bin_name}"
     if [[ -L "${link_path}" ]]; then
       target="$(readlink -f "${link_path}" || true)"
-      if [[ "${target}" == "${PREFIX}"* ]]; then
+      if [[ "${target}" == "${PREFIX}"* || ( -n "${LEGACY_PREFIX}" && "${target}" == "${LEGACY_PREFIX}"* ) ]]; then
         rm -f "${link_path}"
       fi
-    elif [[ -f "${link_path}" ]] && grep -qF "SPOOLWARDEN_VISION_SERVER_HOME=\"${PREFIX}\"" "${link_path}" 2>/dev/null; then
+    elif [[ -f "${link_path}" ]] && ( grep -qF "SPOOLWARDEN_VISION_SERVER_HOME=\"${PREFIX}\"" "${link_path}" 2>/dev/null || grep -qF "FILAMENT_VISION_SERVER_HOME=" "${link_path}" 2>/dev/null ); then
       rm -f "${link_path}"
     fi
   done
@@ -178,8 +200,16 @@ if [[ "${UNINSTALL}" -eq 1 ]]; then
       rmdir "${PREFIX}" 2>/dev/null || true
     fi
   fi
+  if [[ -n "${LEGACY_PREFIX}" && "${LEGACY_PREFIX}" != "${PREFIX}" && "${LEGACY_PREFIX}" != "${PROJECT_REAL}" && -d "${LEGACY_PREFIX}" ]]; then
+    rm -rf "${LEGACY_PREFIX}/.venv" "${LEGACY_PREFIX}/.uv-python" "${LEGACY_PREFIX}/configs" "${LEGACY_PREFIX}/models" \
+           "${LEGACY_PREFIX}/data/catalog" "${LEGACY_PREFIX}/data/logs" "${LEGACY_PREFIX}/data/cache"
+    rm -f "${LEGACY_PREFIX}/.installed" "${LEGACY_PREFIX}/server.pid" "${LEGACY_PREFIX}/start_server.sh" \
+          "${LEGACY_PREFIX}/stop_server.sh" "${LEGACY_PREFIX}/data/server.log"
+    rmdir "${LEGACY_PREFIX}/data" 2>/dev/null || true
+    rmdir "${LEGACY_PREFIX}" 2>/dev/null || true
+  fi
   WAITING_COUNT=0
-  for qxml in "${STATE_DIR}/feedback_queue/pending_feedback.xml" "${PREFIX}/data/feedback_queue/pending_feedback.xml"; do
+  for qxml in "${STATE_DIR}/feedback_queue/pending_feedback.xml" "${LEGACY_STATE_DIR}/feedback_queue/pending_feedback.xml" "${PREFIX}/data/feedback_queue/pending_feedback.xml"; do
     if [[ -f "${qxml}" ]]; then
       c="$(grep -c '<entry ' "${qxml}" 2>/dev/null || true)"
       WAITING_COUNT=$((WAITING_COUNT + ${c:-0}))
@@ -187,20 +217,26 @@ if [[ "${UNINSTALL}" -eq 1 ]]; then
   done
   if [[ "${PURGE}" -eq 1 ]]; then
     rm -rf "${STATE_DIR}"
+    if [[ -n "${LEGACY_STATE_DIR}" && "${LEGACY_STATE_DIR}" != "${STATE_DIR}" && -d "${LEGACY_STATE_DIR}" ]]; then
+      rm -rf "${LEGACY_STATE_DIR}"
+    fi
     if [[ -d "${PREFIX}/data/feedback_queue" ]]; then
       rm -rf "${PREFIX}/data/feedback_queue"
       rmdir "${PREFIX}/data" 2>/dev/null || true
       rmdir "${PREFIX}" 2>/dev/null || true
     fi
-    rm -rf /etc/spoolwarden-vision-server
+    rm -rf /etc/spoolwarden-vision-server /etc/filament-vision-server
     echo "[install.sh] Purged state folder ${STATE_DIR} (${WAITING_COUNT} waiting correction(s) removed)."
   else
     if [[ -d /etc/spoolwarden-vision-server ]]; then
       rmdir /etc/spoolwarden-vision-server 2>/dev/null || true
     fi
+    if [[ -d /etc/filament-vision-server ]]; then
+      rmdir /etc/filament-vision-server 2>/dev/null || true
+    fi
     echo "[install.sh] Preserved state folder ${STATE_DIR} (config, token, keys, and ${WAITING_COUNT} waiting correction(s)). Re-run with --uninstall --purge to remove it."
   fi
-  for acct_marker in /etc/spoolwarden-vision-server/.created_service_account "${STATE_DIR}/.created_service_account"; do
+  for acct_marker in /etc/spoolwarden-vision-server/.created_service_account /etc/filament-vision-server/.created_service_account "${STATE_DIR}/.created_service_account" "${LEGACY_STATE_DIR}/.created_service_account"; do
     if [[ -f "${acct_marker}" ]]; then
       REM_USER="$(sed -n 's/^user=//p' "${acct_marker}" | head -n1)"
       REM_GROUP="$(sed -n 's/^group=//p' "${acct_marker}" | head -n1)"
@@ -213,9 +249,11 @@ if [[ "${UNINSTALL}" -eq 1 ]]; then
       fi
     fi
   done
-  if [[ -d /etc/spoolwarden-vision-server ]]; then
-    rmdir /etc/spoolwarden-vision-server 2>/dev/null || true
-  fi
+  for etc_dir in /etc/spoolwarden-vision-server /etc/filament-vision-server; do
+    if [[ -d "${etc_dir}" ]]; then
+      rmdir "${etc_dir}" 2>/dev/null || true
+    fi
+  done
   echo "[install.sh] Uninstalled cleanly."
   exit 0
 fi
@@ -811,6 +849,39 @@ mkdir -p "${STATE_DIR}"
 UPGRADE_DETECTED=0
 if [[ -f "${STATE_DIR}/service_config.xml" || -f "${PREFIX}/.installed" || -f "${PREFIX}/configs/service_config.xml" || -d "${PREFIX}/data/feedback_queue" ]]; then
   UPGRADE_DETECTED=1
+fi
+if [[ -n "${LEGACY_STATE_DIR}" && "${LEGACY_STATE_DIR}" != "${STATE_DIR}" && -d "${LEGACY_STATE_DIR}" ]]; then
+  UPGRADE_DETECTED=1
+  for item in service_config.xml install_ed25519.pem install_ed25519.pub .created_service_account; do
+    if [[ ! -f "${STATE_DIR}/${item}" && -f "${LEGACY_STATE_DIR}/${item}" ]]; then
+      cp -p "${LEGACY_STATE_DIR}/${item}" "${STATE_DIR}/${item}"
+    fi
+  done
+  chmod 0600 "${STATE_DIR}/service_config.xml" "${STATE_DIR}/install_ed25519.pem" 2>/dev/null || true
+  if [[ -d "${LEGACY_STATE_DIR}/feedback_queue" && ! -d "${STATE_DIR}/feedback_queue" ]]; then
+    cp -a "${LEGACY_STATE_DIR}/feedback_queue" "${STATE_DIR}/feedback_queue"
+  fi
+  echo "[install.sh] Migrated legacy filament-vision-server state from ${LEGACY_STATE_DIR} into ${STATE_DIR}."
+fi
+if [[ -n "${LEGACY_PREFIX}" && "${LEGACY_PREFIX}" != "${PREFIX}" && -d "${LEGACY_PREFIX}" ]]; then
+  UPGRADE_DETECTED=1
+  if [[ -f "${LEGACY_PREFIX}/configs/service_config.xml" && ! -f "${STATE_DIR}/service_config.xml" ]]; then
+    cp -p "${LEGACY_PREFIX}/configs/service_config.xml" "${STATE_DIR}/service_config.xml"
+    chmod 0600 "${STATE_DIR}/service_config.xml" 2>/dev/null || true
+  fi
+  if [[ -d "${LEGACY_PREFIX}/data/feedback_queue" && ! -d "${STATE_DIR}/feedback_queue" ]]; then
+    cp -a "${LEGACY_PREFIX}/data/feedback_queue" "${STATE_DIR}/feedback_queue"
+  fi
+  if command -v systemctl >/dev/null 2>&1; then
+    if systemctl list-unit-files | grep -q "^${LEGACY_SERVICE_NAME}\.service"; then
+      systemctl stop "${LEGACY_SERVICE_NAME}.service" || true
+      systemctl disable "${LEGACY_SERVICE_NAME}.service" || true
+    fi
+    if [[ -n "${LEGACY_UNIT_PATH}" && -f "${LEGACY_UNIT_PATH}" ]]; then
+      rm -f "${LEGACY_UNIT_PATH}"
+      systemctl daemon-reload || true
+    fi
+  fi
 fi
 if [[ -f "${PREFIX}/configs/service_config.xml" && ! -f "${STATE_DIR}/service_config.xml" ]]; then
   cp -p "${PREFIX}/configs/service_config.xml" "${STATE_DIR}/service_config.xml"

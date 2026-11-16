@@ -24,8 +24,9 @@ if ([string]::IsNullOrWhiteSpace($Prefix)) {
 } else {
     $TargetPrefix = [System.IO.Path]::GetFullPath($Prefix)
 }
+$stateBase = if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA } else { Join-Path $env:USERPROFILE "AppData\Local" }
+$LegacyStateDir = Join-Path $stateBase "filament-vision-server"
 if ([string]::IsNullOrWhiteSpace($StateDir)) {
-    $stateBase = if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA } else { Join-Path $env:USERPROFILE "AppData\Local" }
     $TargetStateDir = Join-Path $stateBase "spoolwarden-vision-server"
 } else {
     $TargetStateDir = [System.IO.Path]::GetFullPath($StateDir)
@@ -68,10 +69,12 @@ if ($Uninstall) {
     Stop-FilamentServerProcess -RootDir $TargetPrefix
 
     try {
-        $task = Get-ScheduledTask -TaskName "SpoolwardenVisionServer" -ErrorAction SilentlyContinue
-        if ($task) {
-            Unregister-ScheduledTask -TaskName "SpoolwardenVisionServer" -Confirm:$false -ErrorAction SilentlyContinue
-            Write-Host "[install.ps1] Removed Scheduled Task 'SpoolwardenVisionServer'."
+        foreach ($taskName in @("SpoolwardenVisionServer", "FilamentVisionServer")) {
+            $task = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+            if ($task) {
+                Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
+                Write-Host "[install.ps1] Removed Scheduled Task '$taskName'."
+            }
         }
     } catch {
         # Ignore if scheduled tasks unavailable
@@ -106,6 +109,7 @@ if ($Uninstall) {
     $waitingCount = 0
     foreach ($qxml in @(
         (Join-Path $TargetStateDir "feedback_queue\pending_feedback.xml"),
+        (Join-Path $LegacyStateDir "feedback_queue\pending_feedback.xml"),
         (Join-Path $TargetPrefix "data\feedback_queue\pending_feedback.xml")
     )) {
         if (Test-Path $qxml) {
@@ -115,6 +119,9 @@ if ($Uninstall) {
     if ($Purge) {
         if (Test-Path $TargetStateDir) {
             Remove-Item $TargetStateDir -Recurse -Force -ErrorAction SilentlyContinue
+        }
+        if (($LegacyStateDir -ne $TargetStateDir) -and (Test-Path $LegacyStateDir)) {
+            Remove-Item $LegacyStateDir -Recurse -Force -ErrorAction SilentlyContinue
         }
         $legacyFb = Join-Path $TargetPrefix "data\feedback_queue"
         if (Test-Path $legacyFb) {
@@ -685,9 +692,25 @@ Test-AndRepairPythonDependencies -WantGpu:$useGpuExtras -UseCuda:$CudaReady
 
 New-Item -ItemType Directory -Force -Path $TargetStateDir | Out-Null
 $upgradeDetected = (Test-Path (Join-Path $TargetStateDir "service_config.xml")) `
+    -or (($LegacyStateDir -ne $TargetStateDir) -and (Test-Path $LegacyStateDir)) `
     -or (Test-Path (Join-Path $TargetPrefix ".installed")) `
     -or (Test-Path (Join-Path $TargetPrefix "configs\service_config.xml")) `
     -or (Test-Path (Join-Path $TargetPrefix "data\feedback_queue"))
+if (($LegacyStateDir -ne $TargetStateDir) -and (Test-Path $LegacyStateDir)) {
+    foreach ($item in @("service_config.xml", "install_ed25519.pem", "install_ed25519.pub")) {
+        $srcItem = Join-Path $LegacyStateDir $item
+        $dstItem = Join-Path $TargetStateDir $item
+        if ((Test-Path $srcItem) -and -not (Test-Path $dstItem)) {
+            Copy-Item -Path $srcItem -Destination $dstItem -Force
+        }
+    }
+    $legacyStateQueue = Join-Path $LegacyStateDir "feedback_queue"
+    $stateQueue = Join-Path $TargetStateDir "feedback_queue"
+    if ((Test-Path $legacyStateQueue) -and -not (Test-Path $stateQueue)) {
+        Copy-Item -Path $legacyStateQueue -Destination $stateQueue -Recurse -Force
+    }
+    Write-Host "[install.ps1] Migrated legacy filament-vision-server state from $LegacyStateDir into $TargetStateDir."
+}
 $legacyCfg = Join-Path $TargetPrefix "configs\service_config.xml"
 $stateCfg = Join-Path $TargetStateDir "service_config.xml"
 if ((Test-Path $legacyCfg) -and -not (Test-Path $stateCfg)) {
@@ -722,6 +745,10 @@ Set-Content -Path (Join-Path $TargetPrefix ".installed") -Value "0.3.1" -Encodin
 
 if ($RegisterStartup) {
     try {
+        $legacyTask = Get-ScheduledTask -TaskName "FilamentVisionServer" -ErrorAction SilentlyContinue
+        if ($legacyTask) {
+            Unregister-ScheduledTask -TaskName "FilamentVisionServer" -Confirm:$false -ErrorAction SilentlyContinue
+        }
         $taskCmdArgs = "/c set `"SPOOLWARDEN_VISION_SERVER_HOME=$TargetPrefix`" && set `"SPOOLWARDEN_VISION_SERVER_STATE_DIR=$TargetStateDir`" && `"$venvCli`" serve"
         $action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument $taskCmdArgs -WorkingDirectory $TargetPrefix
         $trigger = New-ScheduledTaskTrigger -AtLogOn
