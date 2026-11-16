@@ -1,4 +1,4 @@
-"""Safe XML serialization, parsing, taxonomy loading, and filament-kit intake.py adapter."""
+"""Safe XML serialization, parsing, taxonomy loading, and Spoolwarden intake.py adapter."""
 from __future__ import annotations
 
 import os
@@ -170,7 +170,7 @@ class BoundingBox:
 
 @dataclass
 class FilamentItem:
-    """Represents a single recognized filament spool or boxed spool aligned with Spoolman & filament-kit."""
+    """Represents a single recognized filament spool or boxed spool aligned with Spoolman & Spoolwarden."""
 
     vendor: str = "Unknown"
     material: str = "PLA"
@@ -372,8 +372,8 @@ class FilamentItem:
             photos=photos,
         )
 
-    def to_filament_kit_item(self) -> dict[str, Any]:
-        """Convert to the exact per-item dictionary expected by filament_kit/intake.py."""
+    def to_spoolwarden_item(self) -> dict[str, Any]:
+        """Convert to the exact per-item dictionary expected by Spoolwarden's intake.py."""
         note = self.note
         if self.vendor == "Unknown" and not note.startswith("BRAND UNKNOWN:"):
             note = f"BRAND UNKNOWN: {note}".strip()
@@ -469,7 +469,7 @@ class IntakeReadResult:
     def from_xml(cls, xml_text: str | bytes) -> IntakeReadResult:
         return cls.from_element(parse_xml_string(xml_text))
 
-    def to_filament_kit_dict(
+    def to_spoolwarden_dict(
         self,
         tag: dict | None = None,
         scale: dict | None = None,
@@ -479,7 +479,7 @@ class IntakeReadResult:
         """Format as the complete response dict conforming to HTTP API contract v1."""
         res: dict[str, Any] = {
             "api_version": "1.1",
-            "items": [it.to_filament_kit_item() for it in self.items],
+            "items": [it.to_spoolwarden_item() for it in self.items],
             "questions": list(self.questions),
             "reader": {
                 "service": "spoolwarden-vision-server",

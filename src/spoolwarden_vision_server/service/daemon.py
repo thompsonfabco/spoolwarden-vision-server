@@ -1090,7 +1090,7 @@ class _DaemonRequestHandler(BaseHTTPRequestHandler):
                     spoolman_filaments=spoolman_filaments,
                     spoolman_vendors=spoolman_vendors,
                 )
-                fk_dict = res.to_filament_kit_dict()
+                fk_dict = res.to_spoolwarden_dict()
                 item_dict = fk_dict["items"][0] if fk_dict.get("items") else {}
                 resp = {
                     "api_version": API_VERSION,
@@ -1167,7 +1167,7 @@ class _DaemonRequestHandler(BaseHTTPRequestHandler):
                 spoolman_filaments=spoolman_filaments,
                 spoolman_vendors=spoolman_vendors,
             )
-            fk_dict = res.to_filament_kit_dict(
+            fk_dict = res.to_spoolwarden_dict(
                 escalated=escalated,
                 fallback_reason=fallback_reason,
             )
@@ -1288,7 +1288,7 @@ def run_daemon_forever(
 
 
 class LocalIntakeClient:
-    """Client for filament-kit's intake.py to query the local daemon."""
+    """Client for Spoolwarden's intake.py to query the local daemon."""
 
     def __init__(
         self,

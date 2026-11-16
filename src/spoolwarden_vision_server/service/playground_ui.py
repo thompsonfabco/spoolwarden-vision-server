@@ -346,7 +346,7 @@ def run_playground_server(host: str = "127.0.0.1", port: int = 7861) -> None:
                     res, escalated, fallback_reason = recognizer.predict([jpg_bytes], tier=t_name)
                     out[label] = {
                         "latency_ms": round(res.latency_ms, 1),
-                        "dict": res.to_filament_kit_dict(
+                        "dict": res.to_spoolwarden_dict(
                             escalated=escalated,
                             fallback_reason=fallback_reason,
                         ),

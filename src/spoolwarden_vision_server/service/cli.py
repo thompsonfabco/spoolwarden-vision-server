@@ -41,7 +41,7 @@ def main(argv: list[str] | None = None) -> int:
     p_pred = sub.add_parser("predict", help="Recognize filament from one or more image files")
     p_pred.add_argument("images", nargs="+", help="Path(s) to filament spool or box photos")
     p_pred.add_argument("--tier", choices=["auto", "cpu", "gpu"], default="auto")
-    p_pred.add_argument("--format", choices=["xml", "filament-kit"], default="xml")
+    p_pred.add_argument("--format", choices=["xml", "spoolwarden", "filament-kit"], default="xml")
 
     # config
     p_cfg = sub.add_parser("config", help="View or update spoolwarden-vision-server service configuration (XML)")
@@ -116,8 +116,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "predict":
         rec = FilamentRecognizer(default_tier=args.tier)
         res, _, _ = rec.predict([Path(p) for p in args.images], tier=args.tier)
-        if args.format == "filament-kit":
-            print(json.dumps(res.to_filament_kit_dict(), indent=2))
+        if args.format in ("spoolwarden", "filament-kit"):
+            print(json.dumps(res.to_spoolwarden_dict(), indent=2))
         else:
             sys.stdout.write(res.to_xml())
         return 0

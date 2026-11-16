@@ -221,7 +221,7 @@ Both `spoolwarden-vision-server` and `spool-server` invoke `spoolwarden_vision_s
 
 ```bash
 spoolwarden-vision-server serve [--host 127.0.0.1] [--port 7920] [--tier auto|cpu|gpu]
-spoolwarden-vision-server predict path/to/spool.jpg [--tier auto|cpu|gpu] [--format xml|filament-kit]
+spoolwarden-vision-server predict path/to/spool.jpg [--tier auto|cpu|gpu] [--format xml|spoolwarden]
 spoolwarden-vision-server status
 spoolwarden-vision-server config [--tier auto|cpu|gpu] [--host 127.0.0.1] [--port 7920] \
     [--idle-unload-seconds 300] [--feedback-opt-in true|false] [--feedback-endpoint URL]
