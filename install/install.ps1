@@ -40,7 +40,7 @@ function Stop-FilamentServerProcess {
         if ($rawPid -match '^\d+$') {
             $pidNum = [int]$rawPid
             $cim = Get-CimInstance Win32_Process -Filter "ProcessId = $pidNum" -ErrorAction SilentlyContinue
-            if ($cim -and (($cim.CommandLine -match 'filament[_-]vision[_-]server|spool-server') -or ($cim.Name -match '^spoolwarden-vision-server'))) {
+            if ($cim -and (($cim.CommandLine -match 'spoolwarden[_-]vision[_-]server|filament[_-]vision[_-]server|spool-server') -or ($cim.Name -match '^spoolwarden-vision-server'))) {
                 Write-Host "[install.ps1] Stopping server PID $rawPid..."
                 Stop-Process -Id $pidNum -Force -ErrorAction SilentlyContinue
             }

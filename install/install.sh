@@ -866,7 +866,7 @@ if [[ -f "\${PID_FILE}" ]]; then
   PID="\$(cat "\${PID_FILE}")"
   if [[ "\${PID}" =~ ^[0-9]+$ ]] && kill -0 "\${PID}" 2>/dev/null; then
     PROC_CMD="\$(ps -p "\${PID}" -o args= 2>/dev/null || true)"
-    if grep -Eq 'filament[_-]vision[_-]server|spool-server' <<<"\$PROC_CMD"; then
+    if grep -Eq 'spoolwarden[_-]vision[_-]server|filament[_-]vision[_-]server|spool-server' <<<"\$PROC_CMD"; then
       kill "\${PID}" || true
     fi
   fi
